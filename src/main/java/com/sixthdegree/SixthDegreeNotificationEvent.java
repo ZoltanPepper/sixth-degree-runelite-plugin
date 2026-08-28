@@ -66,6 +66,17 @@ final class SixthDegreeNotificationEvent
 		String source,
 		long valueGp,
 		boolean screenshot,
+		int itemId)
+	{
+		return loot(title, detail, source, valueGp, screenshot, itemId, false);
+	}
+
+	static SixthDegreeNotificationEvent loot(
+		String title,
+		String detail,
+		String source,
+		long valueGp,
+		boolean screenshot,
 		int itemId,
 		boolean rarityTriggered)
 	{
