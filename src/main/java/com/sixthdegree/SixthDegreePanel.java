@@ -18,7 +18,7 @@ import net.runelite.client.util.LinkBrowser;
 public class SixthDegreePanel extends PluginPanel
 {
 	private static final String DISCORD_INVITE = "https://discord.gg/6degree";
-	private static final int TEXT_WIDTH = 200;
+	private static final int TEXT_WIDTH = 180;
 	private final JPanel content = new JPanel();
 
 	public SixthDegreePanel()
@@ -35,10 +35,10 @@ public class SixthDegreePanel extends PluginPanel
 	{
 		render(
 			"SIXTH DEGREE",
-			"Log in to Old School RuneScape so the plugin can check your clan membership.",
-			null,
-			null,
-			null
+			"Log in to OSRS to check your Sixth Degree clan access.",
+			"Join Sixth Degree",
+			() -> LinkBrowser.browse(DISCORD_INVITE),
+			"Not a member yet?<br>Apply through our Discord."
 		);
 	}
 
