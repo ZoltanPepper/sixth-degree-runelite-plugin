@@ -222,6 +222,7 @@ final class SixthDegreeApiClient
 		writeField(output, boundary, "value_gp", Long.toString(event.valueGp));
 		writeField(output, boundary, "occurred_at", Long.toString(event.occurredAt));
 		writeField(output, boundary, "item_id", Integer.toString(event.itemId));
+		writeField(output, boundary, "rarity_triggered", Boolean.toString(event.rarityTriggered));
 		if (screenshotPng != null && screenshotPng.length > 0)
 		{
 			writeAscii(output, "--" + boundary + "\r\n");
