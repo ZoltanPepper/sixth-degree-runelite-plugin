@@ -2,7 +2,9 @@
 
 ## DinkPlugin
 
-The Sixth Degree RuneLite companion's notification engine was designed with reference to the open-source DinkPlugin project, including established RuneLite event patterns for loot, pets, collection-log updates, levels/XP milestones, boss kill counts and personal-best messages.
+Parts of the Sixth Degree notification behaviour and event parsing are adapted from the open-source **DinkPlugin** project, including established RuneLite patterns for loot, pets, collection-log updates, levels/XP milestones, boss kill counts and personal-best messages.
+
+Upstream project: https://github.com/pajlads/DinkPlugin
 
 DinkPlugin is licensed under the BSD 2-Clause License:
 
@@ -18,5 +20,3 @@ DinkPlugin is licensed under the BSD 2-Clause License:
 > 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
 >
 > THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-Upstream project: `pajlads/DinkPlugin` on GitHub.
