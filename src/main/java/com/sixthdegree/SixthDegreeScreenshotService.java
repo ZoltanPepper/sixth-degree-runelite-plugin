@@ -24,48 +24,60 @@ final class SixthDegreeScreenshotService
 	CompletableFuture<byte[]> capturePng()
 	{
 		CompletableFuture<byte[]> future = new CompletableFuture<>();
-		drawManager.requestNextFrameListener(image -> CompletableFuture.runAsync(() ->
+		drawManager.requestNextFrameListener(image ->
 		{
+			final BufferedImage snapshot;
 			try
 			{
-				future.complete(toPng(image));
+				// DrawManager's frame belongs to RuneLite's render pipeline. Copy it while
+				// we're still inside the callback so a later render cannot mutate the image
+				// while PNG encoding runs on a background thread.
+				snapshot = copyFrame(image);
 			}
 			catch (Exception e)
 			{
 				future.completeExceptionally(e);
+				return;
 			}
-		}));
+
+			CompletableFuture.runAsync(() ->
+			{
+				try
+				{
+					future.complete(toPng(snapshot));
+				}
+				catch (Exception e)
+				{
+					future.completeExceptionally(e);
+				}
+			});
+		});
 		return future;
 	}
 
-	private static byte[] toPng(Image image) throws Exception
+	private static BufferedImage copyFrame(Image image)
 	{
 		if (image == null)
 		{
 			throw new IllegalStateException("RuneLite returned no screenshot frame");
 		}
-
-		BufferedImage buffered;
-		if (image instanceof BufferedImage)
+		int width = Math.max(1, image.getWidth(null));
+		int height = Math.max(1, image.getHeight(null));
+		BufferedImage copy = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+		Graphics2D graphics = copy.createGraphics();
+		try
 		{
-			buffered = (BufferedImage) image;
+			graphics.drawImage(image, 0, 0, null);
 		}
-		else
+		finally
 		{
-			int width = Math.max(1, image.getWidth(null));
-			int height = Math.max(1, image.getHeight(null));
-			buffered = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-			Graphics2D graphics = buffered.createGraphics();
-			try
-			{
-				graphics.drawImage(image, 0, 0, null);
-			}
-			finally
-			{
-				graphics.dispose();
-			}
+			graphics.dispose();
 		}
+		return copy;
+	}
 
+	private static byte[] toPng(BufferedImage buffered) throws Exception
+	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream(1024 * 512);
 		if (!ImageIO.write(buffered, "png", output))
 		{
