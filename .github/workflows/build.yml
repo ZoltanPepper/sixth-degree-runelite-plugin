@@ -28,4 +28,12 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Compile and test
-        run: gradle clean test
+        run: gradle clean test devBundle
+
+      - name: Upload development bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sixth-degree-runelite-dev
+          path: build/distributions/sixth-degree-runelite-dev.zip
+          if-no-files-found: error
+          retention-days: 7
