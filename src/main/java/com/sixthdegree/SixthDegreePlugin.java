@@ -9,7 +9,6 @@ import java.awt.image.BufferedImage;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -26,6 +25,7 @@ import net.runelite.api.clan.ClanSettings;
 import net.runelite.api.events.ClanChannelChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -50,42 +50,39 @@ public class SixthDegreePlugin extends Plugin
 	private Client client;
 
 	@Inject
+	private ClientThread clientThread;
+
+	@Inject
 	private ClientToolbar clientToolbar;
 
 	@Inject
 	private ConfigManager configManager;
 
 	private final SixthDegreeApiClient apiClient = new SixthDegreeApiClient();
-	private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r ->
-	{
-		Thread thread = new Thread(r, "sixth-degree-auth");
-		thread.setDaemon(true);
-		return thread;
-	});
 	private final AtomicBoolean authPollInFlight = new AtomicBoolean(false);
 
 	private SixthDegreePanel panel;
 	private NavigationButton navigationButton;
+	private ScheduledExecutorService scheduler;
 	private ScheduledFuture<?> authPollTask;
 	private int membershipTicks;
-	private ViewState displayedState;
-	private String displayedRsn;
 	private String validatedRsn;
 	private boolean sessionValid;
 	private long lastSessionCheckMillis;
 	private boolean sessionValidationInFlight;
-	private String pendingAuthRequestId;
-	private String pendingAuthRsn;
-
-	private enum ViewState
-	{
-		LOGGED_OUT,
-		RECRUITMENT
-	}
+	private volatile String pendingAuthRequestId;
+	private volatile String pendingAuthRsn;
 
 	@Override
 	protected void startUp()
 	{
+		scheduler = Executors.newSingleThreadScheduledExecutor(r ->
+		{
+			Thread thread = new Thread(r, "sixth-degree-auth");
+			thread.setDaemon(true);
+			return thread;
+		});
+
 		panel = new SixthDegreePanel();
 		navigationButton = NavigationButton.builder()
 			.tooltip("Sixth Degree")
@@ -102,15 +99,17 @@ public class SixthDegreePlugin extends Plugin
 	protected void shutDown()
 	{
 		cancelAuthPolling();
-		scheduler.shutdownNow();
+		if (scheduler != null)
+		{
+			scheduler.shutdownNow();
+			scheduler = null;
+		}
 		if (navigationButton != null)
 		{
 			clientToolbar.removeNavigation(navigationButton);
 		}
 		navigationButton = null;
 		panel = null;
-		displayedState = null;
-		displayedRsn = null;
 		validatedRsn = null;
 		sessionValid = false;
 		membershipTicks = 0;
@@ -158,14 +157,14 @@ public class SixthDegreePlugin extends Plugin
 
 		if (client.getGameState() != GameState.LOGGED_IN)
 		{
-			showBasicState(ViewState.LOGGED_OUT, null);
+			panel.showLoggedOut();
 			return;
 		}
 
 		String rsn = currentRsn();
 		if (rsn == null)
 		{
-			showBasicState(ViewState.LOGGED_OUT, null);
+			panel.showLoggedOut();
 			return;
 		}
 
@@ -173,7 +172,7 @@ public class SixthDegreePlugin extends Plugin
 		{
 			cancelAuthPolling();
 			clearTransientValidation();
-			showBasicState(ViewState.RECRUITMENT, rsn);
+			panel.showRecruitment(rsn);
 			return;
 		}
 
@@ -187,7 +186,7 @@ public class SixthDegreePlugin extends Plugin
 		if (token == null || token.isBlank())
 		{
 			clearTransientValidation();
-			panel.showDiscordLinkRequired(rsn, () -> beginDiscordLink(rsn));
+			panel.showDiscordLinkRequired(rsn, () -> clientThread.invokeLater(() -> beginDiscordLink(rsn)));
 			return;
 		}
 
@@ -211,49 +210,52 @@ public class SixthDegreePlugin extends Plugin
 		panel.showCheckingAccess(rsn);
 
 		apiClient.getMemberStatus(token).whenComplete((status, throwable) ->
+			clientThread.invokeLater(() -> handleSessionValidation(rsn, status, throwable)));
+	}
+
+	private void handleSessionValidation(String rsn, SixthDegreeApiClient.MemberStatus status, Throwable throwable)
+	{
+		sessionValidationInFlight = false;
+		if (!isStillCurrentClanAccount(rsn))
 		{
-			sessionValidationInFlight = false;
-			if (!isStillCurrentClanAccount(rsn))
-			{
-				return;
-			}
+			return;
+		}
 
-			if (throwable != null)
+		if (throwable != null)
+		{
+			Throwable cause = unwrap(throwable);
+			if (cause instanceof SixthDegreeApiClient.ApiException)
 			{
-				Throwable cause = unwrap(throwable);
-				if (cause instanceof SixthDegreeApiClient.ApiException)
+				int code = ((SixthDegreeApiClient.ApiException) cause).getStatusCode();
+				if (code == 401 || code == 403)
 				{
-					int code = ((SixthDegreeApiClient.ApiException) cause).getStatusCode();
-					if (code == 401 || code == 403)
-					{
-						removeSessionToken(rsn);
-						clearTransientValidation();
-						panel.showDiscordLinkRequired(
-							rsn,
-							() -> beginDiscordLink(rsn),
-							"Your previous Discord authorisation is no longer valid."
-						);
-						return;
-					}
+					removeSessionToken(rsn);
+					clearTransientValidation();
+					panel.showDiscordLinkRequired(
+						rsn,
+						() -> clientThread.invokeLater(() -> beginDiscordLink(rsn)),
+						"Your previous Discord authorisation is no longer valid."
+					);
+					return;
 				}
-
-				panel.showConnectionError(rsn, this::refreshAccessState);
-				return;
 			}
 
-			if (status == null || !status.ok || !"member".equalsIgnoreCase(status.access) || !sameRsn(rsn, status.rsn))
-			{
-				removeSessionToken(rsn);
-				clearTransientValidation();
-				panel.showDiscordLinkRequired(rsn, () -> beginDiscordLink(rsn));
-				return;
-			}
+			panel.showConnectionError(rsn, () -> clientThread.invokeLater(this::refreshAccessState));
+			return;
+		}
 
-			validatedRsn = rsn;
-			sessionValid = true;
-			lastSessionCheckMillis = System.currentTimeMillis();
-			panel.showMemberHome(rsn);
-		});
+		if (status == null || !status.ok || !"member".equalsIgnoreCase(status.access) || !sameRsn(rsn, status.rsn))
+		{
+			removeSessionToken(rsn);
+			clearTransientValidation();
+			panel.showDiscordLinkRequired(rsn, () -> clientThread.invokeLater(() -> beginDiscordLink(rsn)));
+			return;
+		}
+
+		validatedRsn = rsn;
+		sessionValid = true;
+		lastSessionCheckMillis = System.currentTimeMillis();
+		panel.showMemberHome(rsn);
 	}
 
 	private void beginDiscordLink(String rsn)
@@ -265,38 +267,43 @@ public class SixthDegreePlugin extends Plugin
 
 		panel.showCheckingAccess(rsn);
 		apiClient.startDiscordAuth(rsn).whenComplete((auth, throwable) ->
-		{
-			if (!isStillCurrentClanAccount(rsn))
-			{
-				return;
-			}
-			if (throwable != null || auth == null || auth.request_id == null || auth.authorize_url == null)
-			{
-				panel.showConnectionError(rsn, () -> beginDiscordLink(rsn));
-				return;
-			}
+			clientThread.invokeLater(() -> handleAuthStart(rsn, auth, throwable)));
+	}
 
-			pendingAuthRequestId = auth.request_id;
-			pendingAuthRsn = rsn;
-			panel.showLinking(rsn);
-			SwingUtilities.invokeLater(() -> LinkBrowser.browse(auth.authorize_url));
-			startAuthPolling();
-		});
+	private void handleAuthStart(String rsn, SixthDegreeApiClient.AuthStart auth, Throwable throwable)
+	{
+		if (!isStillCurrentClanAccount(rsn))
+		{
+			return;
+		}
+		if (throwable != null || auth == null || auth.request_id == null || auth.authorize_url == null)
+		{
+			panel.showConnectionError(rsn, () -> clientThread.invokeLater(() -> beginDiscordLink(rsn)));
+			return;
+		}
+
+		pendingAuthRequestId = auth.request_id;
+		pendingAuthRsn = rsn;
+		panel.showLinking(rsn);
+		SwingUtilities.invokeLater(() -> LinkBrowser.browse(auth.authorize_url));
+		startAuthPolling();
 	}
 
 	private void startAuthPolling()
 	{
 		cancelAuthPollingTaskOnly();
-		authPollTask = scheduler.scheduleAtFixedRate(this::pollDiscordAuth, 2, 2, TimeUnit.SECONDS);
+		if (scheduler != null && !scheduler.isShutdown())
+		{
+			authPollTask = scheduler.scheduleAtFixedRate(this::pollDiscordAuth, 2, 2, TimeUnit.SECONDS);
+		}
 	}
 
 	private void pollDiscordAuth()
 	{
 		String requestId = pendingAuthRequestId;
 		String rsn = pendingAuthRsn;
-		if (requestId == null || rsn == null || !isStillCurrentClanAccount(rsn))
+		if (requestId == null || rsn == null)
 		{
-			cancelAuthPolling();
 			return;
 		}
 		if (!authPollInFlight.compareAndSet(false, true))
@@ -307,50 +314,57 @@ public class SixthDegreePlugin extends Plugin
 		apiClient.getDiscordAuthStatus(requestId).whenComplete((status, throwable) ->
 		{
 			authPollInFlight.set(false);
-			if (throwable != null)
-			{
-				Throwable cause = unwrap(throwable);
-				if (cause instanceof SixthDegreeApiClient.ApiException
-					&& ((SixthDegreeApiClient.ApiException) cause).getStatusCode() == 404)
-				{
-					finishAuthFailure(rsn, "The Discord link expired. Please try again.");
-				}
-				return;
-			}
-			if (status == null || status.status == null)
-			{
-				return;
-			}
-
-			switch (status.status.toLowerCase(Locale.ROOT))
-			{
-				case "approved":
-					if (status.session_token == null || status.session_token.isBlank() || !sameRsn(rsn, status.rsn))
-					{
-						finishAuthFailure(rsn, "Boss Lady could not complete the account link. Please try again.");
-						return;
-					}
-					saveSessionToken(rsn, status.session_token);
-					cancelAuthPolling();
-					validatedRsn = rsn;
-					sessionValid = true;
-					lastSessionCheckMillis = System.currentTimeMillis();
-					if (isStillCurrentClanAccount(rsn))
-					{
-						panel.showMemberHome(rsn);
-					}
-					break;
-				case "denied":
-					finishAuthFailure(rsn, status.reason == null ? "Discord access was not approved." : status.reason);
-					break;
-				case "expired":
-					finishAuthFailure(rsn, "The Discord link expired. Please try again.");
-					break;
-				default:
-					// pending
-					break;
-			}
+			clientThread.invokeLater(() -> handleAuthPollResult(rsn, status, throwable));
 		});
+	}
+
+	private void handleAuthPollResult(String rsn, SixthDegreeApiClient.AuthStatus status, Throwable throwable)
+	{
+		if (!isStillCurrentClanAccount(rsn))
+		{
+			cancelAuthPolling();
+			return;
+		}
+		if (throwable != null)
+		{
+			Throwable cause = unwrap(throwable);
+			if (cause instanceof SixthDegreeApiClient.ApiException
+				&& ((SixthDegreeApiClient.ApiException) cause).getStatusCode() == 404)
+			{
+				finishAuthFailure(rsn, "The Discord link expired. Please try again.");
+			}
+			return;
+		}
+		if (status == null || status.status == null)
+		{
+			return;
+		}
+
+		switch (status.status.toLowerCase(Locale.ROOT))
+		{
+			case "approved":
+				if (status.session_token == null || status.session_token.isBlank() || !sameRsn(rsn, status.rsn))
+				{
+					finishAuthFailure(rsn, "Boss Lady could not complete the account link. Please try again.");
+					return;
+				}
+				saveSessionToken(rsn, status.session_token);
+				cancelAuthPolling();
+				validatedRsn = rsn;
+				sessionValid = true;
+				lastSessionCheckMillis = System.currentTimeMillis();
+				panel.showMemberHome(rsn);
+				break;
+			case "denied":
+				finishAuthFailure(rsn, status.reason == null ? "Discord access was not approved." : status.reason);
+				break;
+			case "expired":
+				finishAuthFailure(rsn, "The Discord link expired. Please try again.");
+				break;
+			default:
+				// pending
+				break;
+		}
 	}
 
 	private void finishAuthFailure(String rsn, String reason)
@@ -358,7 +372,11 @@ public class SixthDegreePlugin extends Plugin
 		cancelAuthPolling();
 		if (isStillCurrentClanAccount(rsn))
 		{
-			panel.showDiscordLinkRequired(rsn, () -> beginDiscordLink(rsn), reason);
+			panel.showDiscordLinkRequired(
+				rsn,
+				() -> clientThread.invokeLater(() -> beginDiscordLink(rsn)),
+				reason
+			);
 		}
 	}
 
@@ -453,24 +471,6 @@ public class SixthDegreePlugin extends Plugin
 		catch (Exception e)
 		{
 			throw new IllegalStateException("Unable to create RuneLite session key", e);
-		}
-	}
-
-	private void showBasicState(ViewState state, String rsn)
-	{
-		if (state == displayedState && Objects.equals(rsn, displayedRsn))
-		{
-			return;
-		}
-		displayedState = state;
-		displayedRsn = rsn;
-		if (state == ViewState.RECRUITMENT)
-		{
-			panel.showRecruitment(rsn);
-		}
-		else
-		{
-			panel.showLoggedOut();
 		}
 	}
 
