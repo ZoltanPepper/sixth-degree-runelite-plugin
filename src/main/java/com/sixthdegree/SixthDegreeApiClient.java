@@ -79,6 +79,30 @@ final class SixthDegreeApiClient
 		return getAuthed("/notifications", sessionToken, NotificationResponse.class);
 	}
 
+	CompletableFuture<LootBatchResponse> postLootBatch(
+		String sessionToken,
+		String batchId,
+		long valueGp,
+		int dropCount,
+		long recordedAt)
+	{
+		JsonObject payload = new JsonObject();
+		payload.addProperty("batch_id", batchId);
+		payload.addProperty("value_gp", valueGp);
+		payload.addProperty("drop_count", dropCount);
+		payload.addProperty("recorded_at", recordedAt);
+		HttpRequest request = authedRequest(API_BASE + "/telemetry/loot-batch", sessionToken)
+			.header("Content-Type", "application/json")
+			.POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+			.build();
+		return sendJson(request, LootBatchResponse.class);
+	}
+
+	CompletableFuture<LootLeaderboardResponse> getLootLeaderboard(String period, String sessionToken)
+	{
+		return getAuthed("/leaderboards/loot?period=" + period, sessionToken, LootLeaderboardResponse.class);
+	}
+
 	private <T> CompletableFuture<T> getAuthed(String path, String token, Class<T> type)
 	{
 		HttpRequest request = authedRequest(API_BASE + path, token).GET().build();
@@ -95,7 +119,7 @@ final class SixthDegreeApiClient
 		return HttpRequest.newBuilder(URI.create(url))
 			.timeout(Duration.ofSeconds(15))
 			.header("Accept", "application/json")
-			.header("User-Agent", "Sixth-Degree-RuneLite/0.3")
+			.header("User-Agent", "Sixth-Degree-RuneLite/0.4")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite");
 	}
 
@@ -289,5 +313,31 @@ final class SixthDegreeApiClient
 		boolean ok;
 		JsonObject rules;
 		String[] member_controls;
+	}
+
+	static final class LootBatchResponse
+	{
+		boolean ok;
+		boolean accepted;
+	}
+
+	static final class LootLeaderboardResponse
+	{
+		boolean ok;
+		String period;
+		long since;
+		long server_time;
+		long round_display_to_gp;
+		LootLeaderboardEntry[] entries;
+		LootLeaderboardEntry you;
+	}
+
+	static final class LootLeaderboardEntry
+	{
+		int rank;
+		String rsn;
+		long value_gp;
+		long drop_count;
+		long updated_at;
 	}
 }

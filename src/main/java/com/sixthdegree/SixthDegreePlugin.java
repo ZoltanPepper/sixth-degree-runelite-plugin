@@ -6,6 +6,7 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
@@ -18,6 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
@@ -25,14 +27,21 @@ import net.runelite.api.clan.ClanSettings;
 import net.runelite.api.events.ClanChannelChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.NpcLootReceived;
+import net.runelite.client.events.ServerNpcLoot;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.LinkBrowser;
+import net.runelite.http.api.loottracker.LootRecordType;
 
 @Slf4j
 @PluginDescriptor(
@@ -45,6 +54,7 @@ public class SixthDegreePlugin extends Plugin
 	private static final String CONFIG_GROUP = "sixthdegree";
 	private static final int MEMBERSHIP_RECHECK_TICKS = 100;
 	private static final long SESSION_RECHECK_MILLIS = TimeUnit.MINUTES.toMillis(10);
+	private static final long LOOT_FLUSH_SECONDS = 120L;
 
 	@Inject
 	private Client client;
@@ -61,18 +71,34 @@ public class SixthDegreePlugin extends Plugin
 	@Inject
 	private SixthDegreeConfig config;
 
+	@Inject
+	private ChatMessageManager chatMessageManager;
+
+	@Inject
+	private Notifier notifier;
+
+	@Inject
+	private SixthDegreeLootService lootService;
+
 	private final SixthDegreeApiClient apiClient = new SixthDegreeApiClient();
+	private final SixthDegreeRealtimeClient realtimeClient = new SixthDegreeRealtimeClient();
 	private final AtomicBoolean authPollInFlight = new AtomicBoolean(false);
+	private final AtomicBoolean lootSendInFlight = new AtomicBoolean(false);
+	private final AtomicBoolean realtimeConnecting = new AtomicBoolean(false);
 
 	private SixthDegreePanel panel;
 	private NavigationButton navigationButton;
 	private ScheduledExecutorService scheduler;
 	private ScheduledFuture<?> authPollTask;
+	private ScheduledFuture<?> lootFlushTask;
+	private ScheduledFuture<?> realtimeGuardTask;
+	private volatile WebSocket realtimeSocket;
 	private int membershipTicks;
 	private String validatedRsn;
 	private boolean sessionValid;
 	private long lastSessionCheckMillis;
 	private boolean sessionValidationInFlight;
+	private String connectionAnnouncedRsn;
 	private volatile String pendingAuthRequestId;
 	private volatile String pendingAuthRsn;
 
@@ -81,7 +107,7 @@ public class SixthDegreePlugin extends Plugin
 	{
 		scheduler = Executors.newSingleThreadScheduledExecutor(r ->
 		{
-			Thread thread = new Thread(r, "sixth-degree-auth");
+			Thread thread = new Thread(r, "sixth-degree-services");
 			thread.setDaemon(true);
 			return thread;
 		});
@@ -94,6 +120,18 @@ public class SixthDegreePlugin extends Plugin
 			.panel(panel)
 			.build();
 		clientToolbar.addNavigation(navigationButton);
+
+		lootFlushTask = scheduler.scheduleAtFixedRate(
+			this::flushLootTelemetry,
+			LOOT_FLUSH_SECONDS,
+			LOOT_FLUSH_SECONDS,
+			TimeUnit.SECONDS);
+		realtimeGuardTask = scheduler.scheduleAtFixedRate(
+			() -> clientThread.invokeLater(this::ensureRealtimeConnected),
+			10,
+			30,
+			TimeUnit.SECONDS);
+
 		refreshAccessState();
 		log.debug("Sixth Degree started");
 	}
@@ -102,10 +140,23 @@ public class SixthDegreePlugin extends Plugin
 	protected void shutDown()
 	{
 		removeLfgForValidatedAccount();
+		lootService.sealBatch();
+		flushLootTelemetry();
+		disconnectRealtime();
 		cancelAuthPolling();
+		if (lootFlushTask != null)
+		{
+			lootFlushTask.cancel(false);
+			lootFlushTask = null;
+		}
+		if (realtimeGuardTask != null)
+		{
+			realtimeGuardTask.cancel(false);
+			realtimeGuardTask = null;
+		}
 		if (scheduler != null)
 		{
-			scheduler.shutdownNow();
+			scheduler.shutdown();
 			scheduler = null;
 		}
 		if (navigationButton != null)
@@ -117,6 +168,7 @@ public class SixthDegreePlugin extends Plugin
 		validatedRsn = null;
 		sessionValid = false;
 		membershipTicks = 0;
+		connectionAnnouncedRsn = null;
 		log.debug("Sixth Degree stopped");
 	}
 
@@ -127,6 +179,10 @@ public class SixthDegreePlugin extends Plugin
 		if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
 			removeLfgForValidatedAccount();
+			lootService.sealBatch();
+			flushLootTelemetry();
+			disconnectRealtime();
+			connectionAnnouncedRsn = null;
 		}
 		refreshAccessState();
 	}
@@ -154,6 +210,43 @@ public class SixthDegreePlugin extends Plugin
 			membershipTicks = 0;
 			refreshAccessState();
 		}
+	}
+
+	@Subscribe(priority = 1)
+	public void onNpcLootReceived(NpcLootReceived event)
+	{
+		if (canSendMemberTelemetry())
+		{
+			lootService.record(event.getItems());
+		}
+	}
+
+	@Subscribe(priority = 1)
+	public void onServerNpcLoot(ServerNpcLoot event)
+	{
+		if (canSendMemberTelemetry())
+		{
+			lootService.record(event.getItems());
+		}
+	}
+
+	@Subscribe
+	public void onLootReceived(LootReceived event)
+	{
+		if (canSendMemberTelemetry() && event.getType() != LootRecordType.PLAYER)
+		{
+			lootService.record(event.getItems());
+		}
+	}
+
+	private boolean canSendMemberTelemetry()
+	{
+		String rsn = validatedRsn;
+		return sessionValid
+			&& rsn != null
+			&& client.getGameState() == GameState.LOGGED_IN
+			&& sameRsn(rsn, currentRsn())
+			&& isCurrentAccountInSixthDegree(rsn);
 	}
 
 	private void refreshAccessState()
@@ -202,6 +295,7 @@ public class SixthDegreePlugin extends Plugin
 		if (sessionValid && sameRsn(rsn, validatedRsn) && now - lastSessionCheckMillis < SESSION_RECHECK_MILLIS)
 		{
 			showMemberPanel(rsn, token);
+			ensureRealtimeConnected();
 			return;
 		}
 
@@ -278,6 +372,9 @@ public class SixthDegreePlugin extends Plugin
 		if (token != null && !token.isBlank())
 		{
 			showMemberPanel(rsn, token);
+			announceConnectedOnce(rsn);
+			ensureRealtimeConnected();
+			flushLootTelemetry();
 		}
 	}
 
@@ -377,6 +474,8 @@ public class SixthDegreePlugin extends Plugin
 				sessionValid = true;
 				lastSessionCheckMillis = System.currentTimeMillis();
 				showMemberPanel(rsn, status.session_token);
+				announceConnectedOnce(rsn);
+				ensureRealtimeConnected();
 				break;
 			case "denied":
 				finishAuthFailure(rsn, status.reason == null ? "Discord access was not approved." : status.reason);
@@ -387,6 +486,143 @@ public class SixthDegreePlugin extends Plugin
 			default:
 				break;
 		}
+	}
+
+	private void announceConnectedOnce(String rsn)
+	{
+		if (sameRsn(connectionAnnouncedRsn, rsn))
+		{
+			return;
+		}
+		connectionAnnouncedRsn = rsn;
+		addGameMessage("You are connected to Sixth Degree.");
+	}
+
+	private void addGameMessage(String message)
+	{
+		if (client.getGameState() != GameState.LOGGED_IN)
+		{
+			return;
+		}
+		chatMessageManager.queue(
+			QueuedMessage.builder()
+				.type(ChatMessageType.CONSOLE)
+				.name("Sixth Degree")
+				.runeLiteFormattedMessage("<col=ffffff>[Sixth Degree]</col> " + message)
+				.build());
+	}
+
+	private void ensureRealtimeConnected()
+	{
+		if (!canSendMemberTelemetry() || realtimeSocket != null || realtimeConnecting.get())
+		{
+			return;
+		}
+		String rsn = validatedRsn;
+		String token = rsn == null ? null : loadSessionToken(rsn);
+		if (token == null || token.isBlank() || !realtimeConnecting.compareAndSet(false, true))
+		{
+			return;
+		}
+
+		realtimeClient.connect(
+			token,
+			event -> clientThread.invokeLater(() -> handleRealtimeEvent(event)),
+			() ->
+			{
+				realtimeSocket = null;
+				realtimeConnecting.set(false);
+			})
+			.whenComplete((socket, error) ->
+			{
+				realtimeConnecting.set(false);
+				if (error != null)
+				{
+					realtimeSocket = null;
+					return;
+				}
+				realtimeSocket = socket;
+			});
+	}
+
+	private void handleRealtimeEvent(SixthDegreeRealtimeClient.RealtimeEvent event)
+	{
+		if (event == null || event.type == null || !canSendMemberTelemetry())
+		{
+			return;
+		}
+		if ("lfg_posted".equalsIgnoreCase(event.type) && event.entry != null)
+		{
+			SixthDegreeApiClient.LfgEntry entry = event.entry;
+			if (entry.rsn == null || sameRsn(entry.rsn, validatedRsn))
+			{
+				return;
+			}
+			if (!config.notifications())
+			{
+				return;
+			}
+			String note = entry.note == null || entry.note.isBlank() ? "a group" : entry.note;
+			String line = entry.rsn + " is looking for: " + note + (entry.world > 0 ? " (W" + entry.world + ")" : "");
+			addGameMessage(line);
+			if (config.notificationSound())
+			{
+				notifier.notify("Sixth Degree LFG: " + line);
+			}
+		}
+	}
+
+	private void disconnectRealtime()
+	{
+		WebSocket socket = realtimeSocket;
+		realtimeSocket = null;
+		realtimeConnecting.set(false);
+		if (socket != null)
+		{
+			try
+			{
+				socket.sendClose(WebSocket.NORMAL_CLOSURE, "Sixth Degree session ended");
+			}
+			catch (Exception ignored)
+			{
+				// Socket is already gone.
+			}
+		}
+	}
+
+	private void flushLootTelemetry()
+	{
+		lootService.sealBatch();
+		if (!sessionValid || validatedRsn == null || !lootSendInFlight.compareAndSet(false, true))
+		{
+			return;
+		}
+		SixthDegreeLootService.Batch batch = lootService.peekBatch();
+		if (batch == null)
+		{
+			lootSendInFlight.set(false);
+			return;
+		}
+		String token = loadSessionToken(validatedRsn);
+		if (token == null || token.isBlank())
+		{
+			lootSendInFlight.set(false);
+			return;
+		}
+
+		apiClient.postLootBatch(token, batch.id, batch.valueGp, batch.dropCount, batch.recordedAt)
+			.whenComplete((response, error) ->
+			{
+				if (error == null && response != null && response.ok)
+				{
+					lootService.acknowledge(batch.id);
+				}
+				lootSendInFlight.set(false);
+				if (error == null && lootService.peekBatch() != null && scheduler != null && !scheduler.isShutdown())
+				{
+					scheduler.schedule(this::flushLootTelemetry, 1, TimeUnit.SECONDS);
+				}
+			});
 	}
 
 	private void finishAuthFailure(String rsn, String reason)
@@ -436,6 +672,7 @@ public class SixthDegreePlugin extends Plugin
 
 	private void clearTransientValidation()
 	{
+		disconnectRealtime();
 		validatedRsn = null;
 		sessionValid = false;
 		lastSessionCheckMillis = 0;

@@ -40,8 +40,10 @@ import net.runelite.client.util.LinkBrowser;
 public class SixthDegreePanel extends PluginPanel
 {
 	private static final String DISCORD_INVITE = "https://discord.gg/6degree";
-	private static final int CARD_WIDTH = 204;
-	private static final int INNER_WIDTH = 184;
+	// RuneLite's sidebar is narrow once its scrollbar/insets are accounted for.
+	// Keep cards inside that real usable width rather than relying on clipping.
+	private static final int CARD_WIDTH = 188;
+	private static final int INNER_WIDTH = 164;
 	private static final Color WHITE = new Color(242, 242, 242);
 	private static final Color MUTED = new Color(178, 178, 178);
 	private static final Color CARD = new Color(45, 45, 45);
@@ -86,7 +88,7 @@ public class SixthDegreePanel extends PluginPanel
 		setLayout(new BorderLayout());
 
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
-		header.setBorder(BorderFactory.createEmptyBorder(14, 9, 8, 9));
+		header.setBorder(BorderFactory.createEmptyBorder(14, 7, 8, 7));
 		header.add(centerRow(label("SIXTH DEGREE", TITLE, WHITE)));
 		header.add(Box.createRigidArea(new Dimension(0, 10)));
 		buildPrimaryNavigation();
@@ -98,7 +100,7 @@ public class SixthDegreePanel extends PluginPanel
 		add(header, BorderLayout.NORTH);
 
 		content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-		content.setBorder(BorderFactory.createEmptyBorder(5, 8, 18, 8));
+		content.setBorder(BorderFactory.createEmptyBorder(5, 4, 18, 4));
 		scrollPane = new JScrollPane(content);
 		scrollPane.setBorder(BorderFactory.createEmptyBorder());
 		scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
@@ -284,7 +286,9 @@ public class SixthDegreePanel extends PluginPanel
 	{
 		if (homePage == HomePage.LEADERBOARD)
 		{
-			renderLootLeaderboard();
+			showLoading("Loot leaderboard");
+			apiClient.getLootLeaderboard(lootPeriod.name().toLowerCase(Locale.ROOT), sessionToken)
+				.whenComplete((data, error) -> SwingUtilities.invokeLater(() -> renderLootLeaderboard(data, error)));
 		}
 		else
 		{
@@ -294,11 +298,21 @@ public class SixthDegreePanel extends PluginPanel
 		}
 	}
 
-	private void renderLootLeaderboard()
+	private void renderLootLeaderboard(SixthDegreeApiClient.LootLeaderboardResponse data, Throwable error)
 	{
+		if (primaryPage != PrimaryPage.HOME || homePage != HomePage.LEADERBOARD)
+		{
+			return;
+		}
+		if (error != null || data == null || !data.ok)
+		{
+			renderError("LOOT LEADERBOARD", error);
+			return;
+		}
+
 		clearContent();
 		addHeading("LOOT LEADERBOARD");
-		addCentered("A fun clan leaderboard based on GP value received from tracked drops.", MUTED);
+		addCentered("Every drop counts. Notification and screenshot thresholds do not affect these totals.", MUTED);
 		addGap(10);
 
 		JPanel periods = new JPanel(new GridLayout(1, 3, 5, 0));
@@ -311,19 +325,38 @@ public class SixthDegreePanel extends PluginPanel
 			button.addActionListener(e ->
 			{
 				lootPeriod = period;
-				renderLootLeaderboard();
+				loadHome();
 			});
 			periods.add(button);
 		}
 		content.add(centerRow(periods));
 		addGap(12);
 
-		JPanel card = card();
-		addCardStrong(card, prettyPeriod(lootPeriod));
-		addCardText(card, "Drop tracking isn’t live yet. Once the Sixth Degree notification engine replaces Dink, qualifying loot will populate this automatically.");
-		addCard(card);
-		addGap(12);
-		addCentered("Planned display: top members, total GP and your current position.", MUTED);
+		JPanel board = card();
+		addCardStrong(board, prettyPeriod(lootPeriod));
+		if (data.entries == null || data.entries.length == 0)
+		{
+			addCardText(board, "No tracked loot yet. Drops will appear here automatically while verified Sixth Degree accounts are logged in.");
+		}
+		else
+		{
+			for (SixthDegreeApiClient.LootLeaderboardEntry entry : data.entries)
+			{
+				addCardText(board,
+					"<b>" + entry.rank + ". " + escape(entry.rsn) + "</b> — "
+						+ formatLootGp(entry.value_gp));
+			}
+		}
+		addCard(board);
+
+		if (data.you != null)
+		{
+			addGap(10);
+			addCentered("You: <b>#" + data.you.rank + " • " + formatLootGp(data.you.value_gp)
+				+ "</b> from " + NUMBER.format(data.you.drop_count) + " drops", WHITE);
+		}
+		addGap(8);
+		addCentered("Displayed GP is rounded down to the nearest 10,000.", MUTED);
 		finishContent();
 	}
 
@@ -396,8 +429,6 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			for (SixthDegreeApiClient.EventItem event : data.events)
 			{
-				// Old/test rows in the generic Discord events table have no RuneLite event type.
-				// Hide them until an event is explicitly published to the companion.
 				if (event.live || (event.event_type != null && !event.event_type.isBlank()))
 				{
 					visible.add(event);
@@ -455,15 +486,8 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			addCardText(panel, "Nothing live right now.");
 		}
-		JButton open = smallButton("Open " + kind);
-		open.addActionListener(e ->
-		{
-			eventPage = "BOTW".equals(kind) ? EventPage.BOTW : EventPage.SOTW;
-			buildEventSubNav();
-			loadEventPage();
-		});
-		panel.add(Box.createRigidArea(new Dimension(0, 6)));
-		panel.add(open);
+		// BOTW/SOTW tabs are directly above this content, so duplicate Open buttons
+		// only add clutter.
 		addCard(panel);
 	}
 
@@ -536,7 +560,7 @@ public class SixthDegreePanel extends PluginPanel
 		}
 		clearContent();
 		addHeading("LOOKING FOR GROUP");
-		addCentered("Post what you want to do, then use clan chat to group up.", MUTED);
+		addCentered("Post what you want to do. Connected clan members are notified, then you can group up in clan chat.", MUTED);
 		addGap(10);
 
 		JPanel composer = card();
@@ -550,6 +574,7 @@ public class SixthDegreePanel extends PluginPanel
 		composer.add(Box.createRigidArea(new Dimension(0, 8)));
 		addCardText(composer, "World <b>" + currentWorld + "</b> • expires after 60 minutes");
 		JButton post = wideButton("Post LFG");
+		post.setMaximumSize(new Dimension(INNER_WIDTH, 32));
 		post.addActionListener(e ->
 		{
 			String activityText = clean(activity.getText());
@@ -583,7 +608,7 @@ public class SixthDegreePanel extends PluginPanel
 		actions.setMaximumSize(new Dimension(CARD_WIDTH, 32));
 		JButton refresh = smallButton("Refresh");
 		refresh.addActionListener(e -> loadLfg());
-		JButton remove = smallButton("Remove mine");
+		JButton remove = smallButton("Remove");
 		remove.addActionListener(e -> apiClient.deleteMyLfg(sessionToken).whenComplete((ignored, deleteError) ->
 			apiClient.getLfg(sessionToken).whenComplete((fresh, freshError) ->
 				SwingUtilities.invokeLater(() -> renderLfg(fresh, freshError, deleteError == null ? "Your LFG was removed." : errorText(deleteError))))));
@@ -640,9 +665,9 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			addGap(18);
 			JButton button = wideButton(buttonText);
-			button.setPreferredSize(new Dimension(170, 36));
-			button.setMinimumSize(new Dimension(170, 36));
-			button.setMaximumSize(new Dimension(170, 36));
+			button.setPreferredSize(new Dimension(176, 40));
+			button.setMinimumSize(new Dimension(176, 40));
+			button.setMaximumSize(new Dimension(176, 40));
 			button.addActionListener(e -> action.run());
 			content.add(centerRow(button));
 		}
@@ -721,7 +746,6 @@ public class SixthDegreePanel extends PluginPanel
 			BorderFactory.createLineBorder(BORDER),
 			BorderFactory.createEmptyBorder(9, 10, 9, 10)));
 		panel.setMaximumSize(new Dimension(CARD_WIDTH, Short.MAX_VALUE));
-		panel.setPreferredSize(null);
 		panel.setAlignmentX(Component.CENTER_ALIGNMENT);
 		return panel;
 	}
@@ -815,9 +839,11 @@ public class SixthDegreePanel extends PluginPanel
 		JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
 		row.setOpaque(false);
 		row.setAlignmentX(Component.CENTER_ALIGNMENT);
+		// The component must be present before preferred height is measured. The old
+		// order measured an empty FlowLayout row, which caused clipped/offset content.
+		row.add(component);
 		Dimension preferred = row.getPreferredSize();
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferred.height));
-		row.add(component);
 		return row;
 	}
 
@@ -881,6 +907,24 @@ public class SixthDegreePanel extends PluginPanel
 		if (period == LootPeriod.DAILY) return "Today";
 		if (period == LootPeriod.WEEKLY) return "This week";
 		return "This month";
+	}
+
+	private static String formatLootGp(long exact)
+	{
+		long rounded = Math.max(0L, exact / 10_000L * 10_000L);
+		if (rounded >= 1_000_000_000L)
+		{
+			return String.format(Locale.UK, "%.2fb", rounded / 1_000_000_000.0);
+		}
+		if (rounded >= 1_000_000L)
+		{
+			return String.format(Locale.UK, "%.2fm", rounded / 1_000_000.0);
+		}
+		if (rounded >= 1_000L)
+		{
+			return String.format(Locale.UK, "%.0fk", rounded / 1_000.0);
+		}
+		return NUMBER.format(rounded) + " gp";
 	}
 
 	private static String formatDate(long epochSeconds)
