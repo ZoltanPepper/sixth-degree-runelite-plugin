@@ -4,6 +4,8 @@
 
 Parts of the Sixth Degree notification behaviour and event parsing are adapted from the open-source **DinkPlugin** project, including established RuneLite patterns for loot, pets, collection-log updates, levels/XP milestones, boss kill counts and personal-best messages.
 
+The loot rarity override also uses DinkPlugin's `npc_drops.json` drop-rate dataset. Boss Lady caches the pinned dataset and serves it to authenticated Sixth Degree plugin clients through the normal Sixth Degree API.
+
 Upstream project: https://github.com/pajlads/DinkPlugin
 
 DinkPlugin is licensed under the BSD 2-Clause License:
