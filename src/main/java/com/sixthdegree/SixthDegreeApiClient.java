@@ -32,9 +32,7 @@ final class SixthDegreeApiClient
 
 	CompletableFuture<AuthStatus> getDiscordAuthStatus(String requestId)
 	{
-		HttpRequest request = baseRequest(API_BASE + "/auth/status/" + requestId)
-			.GET()
-			.build();
+		HttpRequest request = baseRequest(API_BASE + "/auth/status/" + requestId).GET().build();
 		return sendJson(request, AuthStatus.class);
 	}
 
@@ -72,9 +70,7 @@ final class SixthDegreeApiClient
 
 	CompletableFuture<BasicResponse> deleteMyLfg(String sessionToken)
 	{
-		HttpRequest request = authedRequest(API_BASE + "/lfg/me", sessionToken)
-			.DELETE()
-			.build();
+		HttpRequest request = authedRequest(API_BASE + "/lfg/me", sessionToken).DELETE().build();
 		return sendJson(request, BasicResponse.class);
 	}
 
@@ -85,9 +81,7 @@ final class SixthDegreeApiClient
 
 	private <T> CompletableFuture<T> getAuthed(String path, String token, Class<T> type)
 	{
-		HttpRequest request = authedRequest(API_BASE + path, token)
-			.GET()
-			.build();
+		HttpRequest request = authedRequest(API_BASE + path, token).GET().build();
 		return sendJson(request, type);
 	}
 
@@ -101,7 +95,7 @@ final class SixthDegreeApiClient
 		return HttpRequest.newBuilder(URI.create(url))
 			.timeout(Duration.ofSeconds(15))
 			.header("Accept", "application/json")
-			.header("User-Agent", "Sixth-Degree-RuneLite/0.2")
+			.header("User-Agent", "Sixth-Degree-RuneLite/0.3")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite");
 	}
 
@@ -113,7 +107,7 @@ final class SixthDegreeApiClient
 				int status = response.statusCode();
 				if (status < 200 || status >= 300)
 				{
-					String reason = "Request failed";
+					String reason = defaultReason(status);
 					try
 					{
 						JsonObject error = gson.fromJson(response.body(), JsonObject.class);
@@ -125,18 +119,31 @@ final class SixthDegreeApiClient
 							}
 							else if (error.has("error"))
 							{
-								reason = error.get("error").getAsString();
+								reason = error.get("error").getAsString() + " (HTTP " + status + ")";
 							}
 						}
 					}
 					catch (Exception ignored)
 					{
-						// Do not surface arbitrary response bodies to RuneLite logs/UI.
+						// Keep the safe status-based message for non-JSON proxy/404 responses.
 					}
 					throw new ApiException(status, reason);
 				}
 				return gson.fromJson(response.body(), type);
 			});
+	}
+
+	private static String defaultReason(int status)
+	{
+		if (status == 404)
+		{
+			return "Boss Lady is missing the latest RuneLite content API (HTTP 404). Run BotSync/update and restart the bot.";
+		}
+		if (status == 401 || status == 403)
+		{
+			return "RuneLite access needs to be revalidated (HTTP " + status + ").";
+		}
+		return "Sixth Degree API returned HTTP " + status + ".";
 	}
 
 	static final class ApiException extends RuntimeException
