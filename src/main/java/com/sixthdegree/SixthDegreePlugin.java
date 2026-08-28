@@ -86,7 +86,7 @@ public class SixthDegreePlugin extends Plugin
 		panel = new SixthDegreePanel();
 		navigationButton = NavigationButton.builder()
 			.tooltip("Sixth Degree")
-			.icon(buildPlaceholderIcon())
+			.icon(buildSixthDegreeIcon())
 			.priority(8)
 			.panel(panel)
 			.build();
@@ -362,7 +362,6 @@ public class SixthDegreePlugin extends Plugin
 				finishAuthFailure(rsn, "The Discord link expired. Please try again.");
 				break;
 			default:
-				// pending
 				break;
 		}
 	}
@@ -484,18 +483,19 @@ public class SixthDegreePlugin extends Plugin
 		return current;
 	}
 
-	private static BufferedImage buildPlaceholderIcon()
+	private static BufferedImage buildSixthDegreeIcon()
 	{
 		BufferedImage image = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D graphics = image.createGraphics();
 		try
 		{
 			graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			graphics.setColor(new Color(105, 72, 190));
-			graphics.fillOval(1, 1, 30, 30);
+			graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 			graphics.setColor(Color.WHITE);
-			graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
-			graphics.drawString("6", 10, 22);
+			graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 29));
+			graphics.drawString("6", 3, 29);
+			graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+			graphics.drawString("°", 22, 11);
 		}
 		finally
 		{
