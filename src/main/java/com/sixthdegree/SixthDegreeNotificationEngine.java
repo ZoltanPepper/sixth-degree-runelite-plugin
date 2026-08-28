@@ -139,7 +139,8 @@ final class SixthDegreeNotificationEngine
 			cleanSource,
 			total,
 			current.loot.screenshots && total >= current.loot.screenshotMinimumValue,
-			thumbnailItemId);
+			thumbnailItemId,
+			rarityTriggered);
 	}
 
 	List<SixthDegreeNotificationEvent> onGameMessage(String rawMessage)
