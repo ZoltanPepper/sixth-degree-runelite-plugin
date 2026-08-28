@@ -34,14 +34,15 @@ final class SixthDegreeRarityService
 	private static final Type RAW_TYPE = new TypeToken<Map<String, List<RawDrop>>>() { }.getType();
 
 	private final ItemManager itemManager;
-	private final Gson gson = new Gson();
+	private final Gson gson;
 	private volatile Map<String, List<RareDrop>> dropsBySource = Collections.emptyMap();
 	private volatile boolean loaded;
 
 	@Inject
-	SixthDegreeRarityService(ItemManager itemManager)
+	SixthDegreeRarityService(ItemManager itemManager, Gson gson)
 	{
 		this.itemManager = itemManager;
+		this.gson = gson;
 	}
 
 	boolean isLoaded()
