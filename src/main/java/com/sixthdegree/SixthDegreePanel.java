@@ -40,10 +40,9 @@ import net.runelite.client.util.LinkBrowser;
 public class SixthDegreePanel extends PluginPanel
 {
 	private static final String DISCORD_INVITE = "https://discord.gg/6degree";
-	// RuneLite's sidebar is narrow once its scrollbar/insets are accounted for.
-	// Keep cards inside that real usable width rather than relying on clipping.
-	private static final int CARD_WIDTH = 188;
-	private static final int INNER_WIDTH = 164;
+	// Leave a little breathing room for RuneLite's scrollbar and panel insets.
+	private static final int CARD_WIDTH = 184;
+	private static final int INNER_WIDTH = 156;
 	private static final Color WHITE = new Color(242, 242, 242);
 	private static final Color MUTED = new Color(178, 178, 178);
 	private static final Color CARD = new Color(45, 45, 45);
@@ -80,6 +79,7 @@ public class SixthDegreePanel extends PluginPanel
 	private HomePage homePage = HomePage.LEADERBOARD;
 	private EventPage eventPage = EventPage.EVENT_HOME;
 	private LootPeriod lootPeriod = LootPeriod.WEEKLY;
+	private boolean lootRefreshInFlight;
 
 	public SixthDegreePanel(SixthDegreeApiClient apiClient)
 	{
@@ -190,6 +190,19 @@ public class SixthDegreePanel extends PluginPanel
 		}
 	}
 
+	/** Refresh only while the user is actually looking at the loot board. */
+	public void refreshLootLeaderboardIfVisible()
+	{
+		if (sessionToken == null
+			|| primaryPage != PrimaryPage.HOME
+			|| homePage != HomePage.LEADERBOARD
+			|| !isShowing())
+		{
+			return;
+		}
+		requestLootLeaderboard(false);
+	}
+
 	private void buildPrimaryNavigation()
 	{
 		PrimaryPage[] pages = PrimaryPage.values();
@@ -286,9 +299,7 @@ public class SixthDegreePanel extends PluginPanel
 	{
 		if (homePage == HomePage.LEADERBOARD)
 		{
-			showLoading("Loot leaderboard");
-			apiClient.getLootLeaderboard(lootPeriod.name().toLowerCase(Locale.ROOT), sessionToken)
-				.whenComplete((data, error) -> SwingUtilities.invokeLater(() -> renderLootLeaderboard(data, error)));
+			requestLootLeaderboard(true);
 		}
 		else
 		{
@@ -296,6 +307,33 @@ public class SixthDegreePanel extends PluginPanel
 			apiClient.getNotificationRules(sessionToken).whenComplete((data, error) ->
 				SwingUtilities.invokeLater(() -> renderSettings(data, error)));
 		}
+	}
+
+	private void requestLootLeaderboard(boolean showSpinner)
+	{
+		if (lootRefreshInFlight || sessionToken == null)
+		{
+			return;
+		}
+		lootRefreshInFlight = true;
+		final LootPeriod requestedPeriod = lootPeriod;
+		if (showSpinner)
+		{
+			showLoading("Loot leaderboard");
+		}
+		apiClient.getLootLeaderboard(requestedPeriod.name().toLowerCase(Locale.ROOT), sessionToken)
+			.whenComplete((data, error) -> SwingUtilities.invokeLater(() ->
+			{
+				lootRefreshInFlight = false;
+				if (lootPeriod == requestedPeriod)
+				{
+					renderLootLeaderboard(data, error);
+				}
+				else
+				{
+					refreshLootLeaderboardIfVisible();
+				}
+			}));
 	}
 
 	private void renderLootLeaderboard(SixthDegreeApiClient.LootLeaderboardResponse data, Throwable error)
@@ -312,7 +350,7 @@ public class SixthDegreePanel extends PluginPanel
 
 		clearContent();
 		addHeading("LOOT LEADERBOARD");
-		addCentered("Every drop counts. Notification and screenshot thresholds do not affect these totals.", MUTED);
+		addCentered("Every drop counts.<br>Screenshot thresholds do not affect totals.", MUTED);
 		addGap(10);
 
 		JPanel periods = new JPanel(new GridLayout(1, 3, 5, 0));
@@ -336,7 +374,7 @@ public class SixthDegreePanel extends PluginPanel
 		addCardStrong(board, prettyPeriod(lootPeriod));
 		if (data.entries == null || data.entries.length == 0)
 		{
-			addCardText(board, "No tracked loot yet. Drops will appear here automatically while verified Sixth Degree accounts are logged in.");
+			addCardText(board, "No tracked loot yet. Drops appear automatically while verified Sixth Degree accounts are logged in.");
 		}
 		else
 		{
@@ -353,10 +391,10 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			addGap(10);
 			addCentered("You: <b>#" + data.you.rank + " • " + formatLootGp(data.you.value_gp)
-				+ "</b> from " + NUMBER.format(data.you.drop_count) + " drops", WHITE);
+				+ "</b><br>" + NUMBER.format(data.you.drop_count) + " drops", WHITE);
 		}
 		addGap(8);
-		addCentered("Displayed GP is rounded down to the nearest 10,000.", MUTED);
+		addCentered("Exact values are stored; the panel uses compact K/M/B display.", MUTED);
 		finishContent();
 	}
 
@@ -373,7 +411,7 @@ public class SixthDegreePanel extends PluginPanel
 		}
 		clearContent();
 		addHeading("SETTINGS");
-		addCentered("Clan alert rules are locked centrally. Members only control local sound/notification preferences.", MUTED);
+		addCentered("Clan alert rules are locked centrally.<br>Members only control local sound and notifications.", MUTED);
 		addGap(10);
 		JsonObject rules = data.rules == null ? new JsonObject() : data.rules;
 		addRule("VALUABLE LOOT", nested(rules, "loot"), true);
@@ -486,8 +524,6 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			addCardText(panel, "Nothing live right now.");
 		}
-		// BOTW/SOTW tabs are directly above this content, so duplicate Open buttons
-		// only add clutter.
 		addCard(panel);
 	}
 
@@ -560,7 +596,7 @@ public class SixthDegreePanel extends PluginPanel
 		}
 		clearContent();
 		addHeading("LOOKING FOR GROUP");
-		addCentered("Post what you want to do. Connected clan members are notified, then you can group up in clan chat.", MUTED);
+		addCentered("Post what you want to do.<br>Clan members are notified instantly.<br>Group up in clan chat.", MUTED);
 		addGap(10);
 
 		JPanel composer = card();
@@ -572,7 +608,7 @@ public class SixthDegreePanel extends PluginPanel
 		JTextField description = field("e.g. Need +2, happy to teach");
 		composer.add(description);
 		composer.add(Box.createRigidArea(new Dimension(0, 8)));
-		addCardText(composer, "World <b>" + currentWorld + "</b> • expires after 60 minutes");
+		addCardText(composer, "World <b>" + currentWorld + "</b><br>Expires after 60 minutes");
 		JButton post = wideButton("Post LFG");
 		post.setMaximumSize(new Dimension(INNER_WIDTH, 32));
 		post.addActionListener(e ->
@@ -624,7 +660,7 @@ public class SixthDegreePanel extends PluginPanel
 		addHeading("ACTIVE");
 		if (data.entries == null || data.entries.length == 0)
 		{
-			addCentered("Nobody is looking for a group right now.", MUTED);
+			addCentered("Nobody is looking for a group<br>right now.", MUTED);
 		}
 		else
 		{
@@ -703,6 +739,7 @@ public class SixthDegreePanel extends PluginPanel
 		memberRsn = null;
 		sessionToken = null;
 		primaryPage = null;
+		lootRefreshInFlight = false;
 		primaryGroup.clearSelection();
 		secondaryGroup.clearSelection();
 		primaryNav.setVisible(false);
@@ -839,8 +876,6 @@ public class SixthDegreePanel extends PluginPanel
 		JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
 		row.setOpaque(false);
 		row.setAlignmentX(Component.CENTER_ALIGNMENT);
-		// The component must be present before preferred height is measured. The old
-		// order measured an empty FlowLayout row, which caused clipped/offset content.
 		row.add(component);
 		Dimension preferred = row.getPreferredSize();
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferred.height));
@@ -911,20 +946,39 @@ public class SixthDegreePanel extends PluginPanel
 
 	private static String formatLootGp(long exact)
 	{
-		long rounded = Math.max(0L, exact / 10_000L * 10_000L);
-		if (rounded >= 1_000_000_000L)
+		long value = Math.max(0L, exact);
+		if (value < 1_000L)
 		{
-			return String.format(Locale.UK, "%.2fb", rounded / 1_000_000_000.0);
+			return NUMBER.format(value) + " gp";
 		}
-		if (rounded >= 1_000_000L)
+		if (value < 1_000_000L)
 		{
-			return String.format(Locale.UK, "%.2fm", rounded / 1_000_000.0);
+			return (value / 1_000L) + "K";
 		}
-		if (rounded >= 1_000L)
+		if (value < 1_000_000_000L)
 		{
-			return String.format(Locale.UK, "%.0fk", rounded / 1_000.0);
+			int decimals = value >= 100_000_000L ? 0 : value >= 10_000_000L ? 1 : 2;
+			return compactFloor(value, 1_000_000L, decimals) + "M";
 		}
-		return NUMBER.format(rounded) + " gp";
+		int decimals = value >= 100_000_000_000L ? 0 : value >= 10_000_000_000L ? 1 : 2;
+		return compactFloor(value, 1_000_000_000L, decimals) + "B";
+	}
+
+	private static String compactFloor(long value, long unit, int decimals)
+	{
+		long scale = decimals == 0 ? 1L : decimals == 1 ? 10L : 100L;
+		long scaled = value * scale / unit;
+		if (decimals == 0)
+		{
+			return Long.toString(scaled);
+		}
+		long whole = scaled / scale;
+		long fraction = scaled % scale;
+		String suffix = decimals == 1
+			? Long.toString(fraction)
+			: String.format(Locale.UK, "%02d", fraction);
+		while (suffix.endsWith("0")) suffix = suffix.substring(0, suffix.length() - 1);
+		return suffix.isEmpty() ? Long.toString(whole) : whole + "." + suffix;
 	}
 
 	private static String formatDate(long epochSeconds)
