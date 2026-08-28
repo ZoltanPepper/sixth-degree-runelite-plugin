@@ -17,6 +17,8 @@ import java.text.NumberFormat;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -39,47 +41,43 @@ public class SixthDegreePanel extends PluginPanel
 {
 	private static final String DISCORD_INVITE = "https://discord.gg/6degree";
 	private static final int CARD_WIDTH = 204;
-	private static final int TEXT_WIDTH = 196;
-	private static final Color WHITE = new Color(238, 238, 238);
-	private static final Color MUTED = new Color(180, 180, 180);
+	private static final int INNER_WIDTH = 184;
+	private static final Color WHITE = new Color(242, 242, 242);
+	private static final Color MUTED = new Color(178, 178, 178);
 	private static final Color CARD = new Color(45, 45, 45);
-	private static final Color BORDER = new Color(74, 74, 74);
-	private static final Color SELECTED_BORDER = new Color(230, 230, 230);
+	private static final Color BORDER = new Color(76, 76, 76);
+	private static final Color SELECTED = new Color(232, 232, 232);
 	private static final DateTimeFormatter EVENT_TIME = DateTimeFormatter.ofPattern("EEE d MMM • HH:mm");
 	private static final NumberFormat NUMBER = NumberFormat.getIntegerInstance(Locale.UK);
+	private static final Font BODY = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
+	private static final Font BODY_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 12);
+	private static final Font HEADING = new Font(Font.SANS_SERIF, Font.BOLD, 13);
+	private static final Font TITLE = new Font(Font.SANS_SERIF, Font.BOLD, 16);
 
-	private enum PrimaryPage
-	{
-		HOME,
-		EVENTS,
-		LFG
-	}
-
-	private enum EventPage
-	{
-		EVENT_HOME,
-		BOTW,
-		SOTW
-	}
+	private enum PrimaryPage { HOME, EVENTS, LFG }
+	private enum HomePage { LEADERBOARD, SETTINGS }
+	private enum EventPage { EVENT_HOME, BOTW, SOTW }
+	private enum LootPeriod { DAILY, WEEKLY, MONTHLY }
 
 	private final SixthDegreeApiClient apiClient;
 	private final JPanel header = new JPanel();
 	private final JPanel primaryNav = new JPanel(new GridLayout(1, 3, 7, 0));
-	private final JPanel eventNav = new JPanel(new GridLayout(1, 3, 6, 0));
+	private final JPanel secondaryNav = new JPanel(new GridLayout(1, 3, 6, 0));
 	private final JPanel content = new JPanel();
 	private final JScrollPane scrollPane;
 	private final ButtonGroup primaryGroup = new ButtonGroup();
-	private final ButtonGroup eventGroup = new ButtonGroup();
-	private final JToggleButton[] primaryButtons = new JToggleButton[PrimaryPage.values().length];
-	private final JToggleButton[] eventButtons = new JToggleButton[EventPage.values().length];
+	private final ButtonGroup secondaryGroup = new ButtonGroup();
+	private final JToggleButton[] primaryButtons = new JToggleButton[3];
 
 	private String memberRsn;
 	private String sessionToken;
 	private int currentWorld;
 	private boolean personalNotifications;
 	private boolean personalSound;
-	private PrimaryPage currentPrimary;
-	private EventPage currentEvent = EventPage.EVENT_HOME;
+	private PrimaryPage primaryPage;
+	private HomePage homePage = HomePage.LEADERBOARD;
+	private EventPage eventPage = EventPage.EVENT_HOME;
+	private LootPeriod lootPeriod = LootPeriod.WEEKLY;
 
 	public SixthDegreePanel(SixthDegreeApiClient apiClient)
 	{
@@ -88,29 +86,24 @@ public class SixthDegreePanel extends PluginPanel
 		setLayout(new BorderLayout());
 
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
-		header.setBorder(BorderFactory.createEmptyBorder(16, 8, 8, 8));
-		header.add(centerRow(titleLabel("SIXTH DEGREE", 17f)));
-		header.add(Box.createRigidArea(new Dimension(0, 11)));
-
+		header.setBorder(BorderFactory.createEmptyBorder(14, 9, 8, 9));
+		header.add(centerRow(label("SIXTH DEGREE", TITLE, WHITE)));
+		header.add(Box.createRigidArea(new Dimension(0, 10)));
 		buildPrimaryNavigation();
 		primaryNav.setVisible(false);
-		header.add(centerRow(primaryNav));
-
+		header.add(primaryNav);
 		header.add(Box.createRigidArea(new Dimension(0, 7)));
-		buildEventNavigation();
-		eventNav.setVisible(false);
-		header.add(centerRow(eventNav));
+		secondaryNav.setVisible(false);
+		header.add(secondaryNav);
 		add(header, BorderLayout.NORTH);
 
 		content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-		content.setBorder(BorderFactory.createEmptyBorder(7, 6, 18, 6));
-
+		content.setBorder(BorderFactory.createEmptyBorder(5, 8, 18, 8));
 		scrollPane = new JScrollPane(content);
 		scrollPane.setBorder(BorderFactory.createEmptyBorder());
 		scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 		add(scrollPane, BorderLayout.CENTER);
-
 		showLoggedOut();
 	}
 
@@ -121,19 +114,19 @@ public class SixthDegreePanel extends PluginPanel
 			"Log in to Old School RuneScape.<br><br>We’ll check whether this account belongs to Sixth Degree.",
 			"Join Sixth Degree",
 			() -> LinkBrowser.browse(DISCORD_INVITE),
-			"Not a member yet?<br>Apply through our Discord."
+			"Not a member yet? Apply through our Discord."
 		);
 	}
 
 	public void showRecruitment(String rsn)
 	{
 		leaveMemberMode();
-		String name = rsn == null || rsn.isBlank() ? "This account" : "<b>" + escape(rsn) + "</b>";
+		String who = rsn == null || rsn.isBlank() ? "This account" : "<b>" + escape(rsn) + "</b>";
 		renderAccess(
-			name + " isn’t currently a Sixth Degree clan member.<br><br>Join our Discord to apply and get involved.",
+			who + " isn’t currently a Sixth Degree clan member.<br><br>Join our Discord to apply and get involved.",
 			"Join Sixth Degree",
 			() -> LinkBrowser.browse(DISCORD_INVITE),
-			"Events • PvM • Competitions<br>Learners welcome"
+			"PvM • Events • Competitions • Learners welcome"
 		);
 	}
 
@@ -145,26 +138,20 @@ public class SixthDegreePanel extends PluginPanel
 	public void showDiscordLinkRequired(String rsn, Runnable onConnect, String reason)
 	{
 		leaveMemberMode();
-		String message = "Welcome, <b>" + escape(rsn) + "</b>.<br><br>Your RuneScape account is in Sixth Degree. Connect Discord to unlock the clan panel.";
+		String text = "Welcome, <b>" + escape(rsn) + "</b>.<br><br>This account is in Sixth Degree. Connect Discord to unlock the clan panel.";
 		if (reason != null && !reason.isBlank())
 		{
-			message += "<br><br>" + escape(reason);
+			text += "<br><br>" + escape(reason);
 		}
-		renderAccess(
-			message,
-			"Connect Discord",
-			onConnect,
-			"Requires the Sixth Degree Discord<br>and Clan Member role."
-		);
+		renderAccess(text, "Connect Discord", onConnect, "Requires the Discord Clan Member role.");
 	}
 
 	public void showLinking(String rsn)
 	{
 		leaveMemberMode();
 		renderAccess(
-			"Linking <b>" + escape(rsn) + "</b>…<br><br>Finish the Discord authorisation in your browser, then return here.",
-			null,
-			null,
+			"Linking <b>" + escape(rsn) + "</b>…<br><br>Finish the Discord authorisation in your browser.",
+			null, null,
 			"Waiting for Boss Lady to verify your account."
 		);
 	}
@@ -172,49 +159,33 @@ public class SixthDegreePanel extends PluginPanel
 	public void showCheckingAccess(String rsn)
 	{
 		leaveMemberMode();
-		renderAccess(
-			"Checking clan and Discord access for <b>" + escape(rsn) + "</b>…",
-			null,
-			null,
-			"This only takes a moment."
-		);
-	}
-
-	public void showMemberHome(
-		String rsn,
-		String token,
-		int world,
-		boolean notifications,
-		boolean notificationSound)
-	{
-		boolean sameSession = memberRsn != null
-			&& memberRsn.equalsIgnoreCase(rsn)
-			&& sessionToken != null
-			&& sessionToken.equals(token)
-			&& currentPrimary != null;
-
-		memberRsn = rsn;
-		sessionToken = token;
-		currentWorld = world;
-		personalNotifications = notifications;
-		personalSound = notificationSound;
-		primaryNav.setVisible(true);
-
-		if (!sameSession)
-		{
-			selectPrimary(PrimaryPage.HOME);
-		}
+		renderAccess("Checking clan and Discord access for <b>" + escape(rsn) + "</b>…", null, null, "This only takes a moment.");
 	}
 
 	public void showConnectionError(String rsn, Runnable onRetry)
 	{
 		leaveMemberMode();
 		renderAccess(
-			"Sixth Degree couldn’t verify the server connection for <b>" + escape(rsn) + "</b>.<br><br>Your in-game clan membership is still recognised.",
-			"Retry",
-			onRetry,
-			"No account access data has been changed."
+			"Sixth Degree couldn’t verify the server connection for <b>" + escape(rsn) + "</b>.",
+			"Retry", onRetry,
+			"Your local RuneScape clan membership is still recognised."
 		);
+	}
+
+	public void showMemberHome(String rsn, String token, int world, boolean notifications, boolean sound)
+	{
+		boolean same = memberRsn != null && memberRsn.equalsIgnoreCase(rsn)
+			&& sessionToken != null && sessionToken.equals(token) && primaryPage != null;
+		memberRsn = rsn;
+		sessionToken = token;
+		currentWorld = world;
+		personalNotifications = notifications;
+		personalSound = sound;
+		primaryNav.setVisible(true);
+		if (!same)
+		{
+			selectPrimary(PrimaryPage.HOME);
+		}
 	}
 
 	private void buildPrimaryNavigation()
@@ -223,49 +194,12 @@ public class SixthDegreePanel extends PluginPanel
 		for (int i = 0; i < pages.length; i++)
 		{
 			PrimaryPage page = pages[i];
-			JToggleButton button = iconButton(buildPrimaryIcon(page), primaryTooltip(page), 62, 38);
+			JToggleButton button = iconButton(buildPrimaryIcon(page), primaryTooltip(page));
 			button.addActionListener(e -> selectPrimary(page));
 			primaryButtons[i] = button;
 			primaryGroup.add(button);
 			primaryNav.add(button);
 		}
-		primaryNav.setOpaque(false);
-		primaryNav.setPreferredSize(new Dimension(204, 38));
-	}
-
-	private void buildEventNavigation()
-	{
-		String[] labels = {"EVENTS", "BOTW", "SOTW"};
-		EventPage[] pages = EventPage.values();
-		for (int i = 0; i < pages.length; i++)
-		{
-			EventPage page = pages[i];
-			JToggleButton button = new JToggleButton(labels[i]);
-			button.setFont(button.getFont().deriveFont(Font.BOLD, 11f));
-			button.setForeground(WHITE);
-			button.setFocusPainted(false);
-			button.setContentAreaFilled(false);
-			button.setOpaque(false);
-			button.setBorder(BorderFactory.createLineBorder(BORDER));
-			button.addActionListener(e -> selectEvent(page));
-			eventButtons[i] = button;
-			eventGroup.add(button);
-			eventNav.add(button);
-		}
-		eventNav.setOpaque(false);
-		eventNav.setPreferredSize(new Dimension(204, 30));
-	}
-
-	private JToggleButton iconButton(BufferedImage icon, String tooltip, int width, int height)
-	{
-		JToggleButton button = new JToggleButton(new ImageIcon(icon));
-		button.setToolTipText(tooltip);
-		button.setFocusPainted(false);
-		button.setContentAreaFilled(false);
-		button.setOpaque(false);
-		button.setPreferredSize(new Dimension(width, height));
-		button.setBorder(BorderFactory.createLineBorder(BORDER));
-		return button;
 	}
 
 	private void selectPrimary(PrimaryPage page)
@@ -274,227 +208,240 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			return;
 		}
-		currentPrimary = page;
+		primaryPage = page;
 		for (int i = 0; i < primaryButtons.length; i++)
 		{
 			boolean selected = PrimaryPage.values()[i] == page;
 			primaryButtons[i].setSelected(selected);
-			primaryButtons[i].setBorder(BorderFactory.createLineBorder(selected ? SELECTED_BORDER : BORDER));
+			primaryButtons[i].setBorder(BorderFactory.createLineBorder(selected ? SELECTED : BORDER));
 		}
-		eventNav.setVisible(page == PrimaryPage.EVENTS);
-
-		switch (page)
+		if (page == PrimaryPage.HOME)
 		{
-			case HOME:
-				loadHome();
-				break;
-			case EVENTS:
-				selectEvent(currentEvent == null ? EventPage.EVENT_HOME : currentEvent);
-				break;
-			case LFG:
-				showLoading("Looking for Group");
-				loadLfg();
-				break;
-			default:
-				break;
+			buildHomeSubNav();
+			loadHome();
 		}
+		else if (page == PrimaryPage.EVENTS)
+		{
+			buildEventSubNav();
+			loadEventPage();
+		}
+		else
+		{
+			secondaryNav.setVisible(false);
+			secondaryNav.removeAll();
+			loadLfg();
+		}
+		header.revalidate();
+		header.repaint();
 	}
 
-	private void selectEvent(EventPage page)
+	private void buildHomeSubNav()
 	{
-		if (sessionToken == null || currentPrimary != PrimaryPage.EVENTS)
+		secondaryNav.removeAll();
+		secondaryGroup.clearSelection();
+		secondaryNav.setLayout(new GridLayout(1, 2, 6, 0));
+		for (HomePage page : HomePage.values())
 		{
-			return;
+			JToggleButton button = textToggle(page == HomePage.LEADERBOARD ? "LEADERBOARD" : "SETTINGS");
+			button.setSelected(page == homePage);
+			button.setBorder(BorderFactory.createLineBorder(page == homePage ? SELECTED : BORDER));
+			button.addActionListener(e ->
+			{
+				homePage = page;
+				buildHomeSubNav();
+				loadHome();
+			});
+			secondaryGroup.add(button);
+			secondaryNav.add(button);
 		}
-		currentEvent = page;
-		for (int i = 0; i < eventButtons.length; i++)
-		{
-			boolean selected = EventPage.values()[i] == page;
-			eventButtons[i].setSelected(selected);
-			eventButtons[i].setBorder(BorderFactory.createLineBorder(selected ? SELECTED_BORDER : BORDER));
-		}
+		secondaryNav.setVisible(true);
+	}
 
-		switch (page)
+	private void buildEventSubNav()
+	{
+		secondaryNav.removeAll();
+		secondaryGroup.clearSelection();
+		secondaryNav.setLayout(new GridLayout(1, 3, 6, 0));
+		for (EventPage page : EventPage.values())
 		{
-			case EVENT_HOME:
-				showLoading("Events");
-				apiClient.getDashboard(sessionToken).whenComplete((data, error) ->
-					SwingUtilities.invokeLater(() -> renderEventsHome(data, error)));
-				break;
-			case BOTW:
-				showLoading("Boss of the Week");
-				apiClient.getCompetition("BOTW", sessionToken).whenComplete((data, error) ->
-					SwingUtilities.invokeLater(() -> renderCompetition(EventPage.BOTW, data, error)));
-				break;
-			case SOTW:
-				showLoading("Skill of the Week");
-				apiClient.getCompetition("SOTW", sessionToken).whenComplete((data, error) ->
-					SwingUtilities.invokeLater(() -> renderCompetition(EventPage.SOTW, data, error)));
-				break;
-			default:
-				break;
+			String text = page == EventPage.EVENT_HOME ? "EVENTS" : page.name();
+			JToggleButton button = textToggle(text);
+			button.setSelected(page == eventPage);
+			button.setBorder(BorderFactory.createLineBorder(page == eventPage ? SELECTED : BORDER));
+			button.addActionListener(e ->
+			{
+				eventPage = page;
+				buildEventSubNav();
+				loadEventPage();
+			});
+			secondaryGroup.add(button);
+			secondaryNav.add(button);
 		}
+		secondaryNav.setVisible(true);
 	}
 
 	private void loadHome()
 	{
-		showLoading("Home");
-		apiClient.getDashboard(sessionToken).whenComplete((dashboard, dashboardError) ->
+		if (homePage == HomePage.LEADERBOARD)
 		{
-			if (dashboardError != null || dashboard == null || !dashboard.ok)
-			{
-				SwingUtilities.invokeLater(() -> renderHome(dashboard, null, dashboardError));
-				return;
-			}
-			apiClient.getNotificationRules(sessionToken).whenComplete((alerts, alertsError) ->
-				SwingUtilities.invokeLater(() -> renderHome(dashboard, alerts, alertsError)));
-		});
-	}
-
-	private void renderHome(
-		SixthDegreeApiClient.Dashboard data,
-		SixthDegreeApiClient.NotificationResponse alerts,
-		Throwable error)
-	{
-		if (currentPrimary != PrimaryPage.HOME)
-		{
-			return;
-		}
-		if (data == null || !data.ok)
-		{
-			renderPageError("HOME", error);
-			return;
-		}
-
-		clearContent();
-		addSection("HOME");
-		addCenteredHtml("Welcome, <b>" + escape(memberRsn) + "</b> &nbsp; ✓", 14f, WHITE);
-		addGap(9);
-
-		JPanel status = card();
-		addCardTitle(status, "CONNECTED");
-		addCardText(status, "Clan <b>✓</b> &nbsp; Discord <b>✓</b> &nbsp; World <b>" + currentWorld + "</b>");
-		addCard(status);
-
-		if (data.announcement != null && !data.announcement.isBlank())
-		{
-			addGap(9);
-			JPanel announcement = card();
-			addCardTitle(announcement, "CLAN ANNOUNCEMENT");
-			addCardText(announcement, escape(data.announcement));
-			addCard(announcement);
-		}
-
-		addGap(12);
-		addSection("AT A GLANCE");
-		JPanel glance = card();
-		int eventCount = data.events == null ? 0 : data.events.length;
-		addCardText(glance, "Upcoming/live events: <b>" + eventCount + "</b>");
-		addCardText(glance, "Active LFG posts: <b>" + data.lfg_count + "</b>");
-		addCardText(glance, "BOTW: <b>" + activeLabel(data.botw) + "</b>");
-		addCardText(glance, "SOTW: <b>" + activeLabel(data.sotw) + "</b>");
-		addCard(glance);
-
-		addGap(12);
-		addSection("CLAN ALERTS");
-		JPanel alertCard = card();
-		if (alerts == null || !alerts.ok)
-		{
-			addCardText(alertCard, "Clan alert rules couldn’t be loaded right now.");
+			renderLootLeaderboard();
 		}
 		else
 		{
-			JsonObject rules = alerts.rules == null ? new JsonObject() : alerts.rules;
-			addCardText(alertCard, "Loot: <b>" + onOff(nested(rules, "loot")) + "</b>");
-			addCardText(alertCard, "Pets: <b>" + onOff(nested(rules, "pets")) + "</b>");
-			addCardText(alertCard, "Collection logs: <b>" + onOff(nested(rules, "collection_logs")) + "</b>");
-			addCardText(alertCard, "Milestones: <b>" + onOff(nested(rules, "milestones")) + "</b>");
-			addCardText(alertCard, "Boss PBs: <b>" + onOff(nested(rules, "boss_pbs")) + "</b>");
+			showLoading("Settings");
+			apiClient.getNotificationRules(sessionToken).whenComplete((data, error) ->
+				SwingUtilities.invokeLater(() -> renderSettings(data, error)));
 		}
-		addCardText(alertCard, "Your notifications: <b>" + (personalNotifications ? "On" : "Off") + "</b> • Sound: <b>" + (personalSound ? "On" : "Off") + "</b>");
-		addCard(alertCard);
+	}
 
+	private void renderLootLeaderboard()
+	{
+		clearContent();
+		addHeading("LOOT LEADERBOARD");
+		addCentered("A fun clan leaderboard based on GP value received from tracked drops.", MUTED);
+		addGap(10);
+
+		JPanel periods = new JPanel(new GridLayout(1, 3, 5, 0));
+		periods.setOpaque(false);
+		periods.setMaximumSize(new Dimension(CARD_WIDTH, 30));
+		for (LootPeriod period : LootPeriod.values())
+		{
+			JButton button = smallButton(period.name());
+			button.setBorder(BorderFactory.createLineBorder(period == lootPeriod ? SELECTED : BORDER));
+			button.addActionListener(e ->
+			{
+				lootPeriod = period;
+				renderLootLeaderboard();
+			});
+			periods.add(button);
+		}
+		content.add(centerRow(periods));
 		addGap(12);
-		JPanel actions = new JPanel(new GridLayout(1, 2, 7, 0));
-		actions.setOpaque(false);
-		JButton events = compactButton("Open Events");
-		events.addActionListener(e -> selectPrimary(PrimaryPage.EVENTS));
-		JButton lfg = compactButton("Open LFG");
-		lfg.addActionListener(e -> selectPrimary(PrimaryPage.LFG));
-		actions.add(events);
-		actions.add(lfg);
-		addCenteredFixed(actions, CARD_WIDTH, 31);
+
+		JPanel card = card();
+		addCardStrong(card, prettyPeriod(lootPeriod));
+		addCardText(card, "Drop tracking isn’t live yet. Once the Sixth Degree notification engine replaces Dink, qualifying loot will populate this automatically.");
+		addCard(card);
+		addGap(12);
+		addCentered("Planned display: top members, total GP and your current position.", MUTED);
 		finishContent();
+	}
+
+	private void renderSettings(SixthDegreeApiClient.NotificationResponse data, Throwable error)
+	{
+		if (primaryPage != PrimaryPage.HOME || homePage != HomePage.SETTINGS)
+		{
+			return;
+		}
+		if (error != null || data == null)
+		{
+			renderError("SETTINGS", error);
+			return;
+		}
+		clearContent();
+		addHeading("SETTINGS");
+		addCentered("Clan alert rules are locked centrally. Members only control local sound/notification preferences.", MUTED);
+		addGap(10);
+		JsonObject rules = data.rules == null ? new JsonObject() : data.rules;
+		addRule("VALUABLE LOOT", nested(rules, "loot"), true);
+		addGap(6);
+		addRule("PETS", nested(rules, "pets"), false);
+		addGap(6);
+		addRule("COLLECTION LOGS", nested(rules, "collection_logs"), false);
+		addGap(6);
+		addRule("MILESTONES", nested(rules, "milestones"), false);
+		addGap(6);
+		addRule("BOSS PBS", nested(rules, "boss_pbs"), false);
+		addGap(10);
+		JPanel local = card();
+		addCardTitle(local, "YOUR CLIENT");
+		addCardText(local, "Notifications: <b>" + (personalNotifications ? "On" : "Off") + "</b>");
+		addCardText(local, "Sound: <b>" + (personalSound ? "On" : "Off") + "</b>");
+		addCard(local);
+		finishContent();
+	}
+
+	private void loadEventPage()
+	{
+		if (eventPage == EventPage.EVENT_HOME)
+		{
+			showLoading("Events");
+			apiClient.getDashboard(sessionToken).whenComplete((data, error) ->
+				SwingUtilities.invokeLater(() -> renderEventsHome(data, error)));
+		}
+		else
+		{
+			String kind = eventPage == EventPage.BOTW ? "BOTW" : "SOTW";
+			showLoading(kind);
+			apiClient.getCompetition(kind, sessionToken).whenComplete((data, error) ->
+				SwingUtilities.invokeLater(() -> renderCompetition(kind, data, error)));
+		}
 	}
 
 	private void renderEventsHome(SixthDegreeApiClient.Dashboard data, Throwable error)
 	{
-		if (currentPrimary != PrimaryPage.EVENTS || currentEvent != EventPage.EVENT_HOME)
+		if (primaryPage != PrimaryPage.EVENTS || eventPage != EventPage.EVENT_HOME)
 		{
 			return;
 		}
 		if (error != null || data == null || !data.ok)
 		{
-			renderPageError("EVENTS", error);
+			renderError("EVENTS", error);
 			return;
 		}
-
 		clearContent();
-		addSection("EVENT HOME");
-		if (data.events == null || data.events.length == 0)
+		addHeading("EVENT HOME");
+		List<SixthDegreeApiClient.EventItem> visible = new ArrayList<>();
+		if (data.events != null)
+		{
+			for (SixthDegreeApiClient.EventItem event : data.events)
+			{
+				// Old/test rows in the generic Discord events table have no RuneLite event type.
+				// Hide them until an event is explicitly published to the companion.
+				if (event.live || (event.event_type != null && !event.event_type.isBlank()))
+				{
+					visible.add(event);
+				}
+			}
+		}
+		if (visible.isEmpty())
 		{
 			JPanel empty = card();
-			addCardStrong(empty, "No clan events listed");
-			addCardText(empty, "Live and upcoming Discord events will appear here automatically.");
+			addCardStrong(empty, "No published clan events");
+			addCardText(empty, "Events published for the RuneLite companion will appear here automatically.");
 			addCard(empty);
 		}
 		else
 		{
-			for (SixthDegreeApiClient.EventItem event : data.events)
+			for (SixthDegreeApiClient.EventItem event : visible)
 			{
-				addCard(buildEventCard(event));
-				addGap(8);
+				addCard(eventCard(event));
+				addGap(7);
 			}
 		}
-
-		addGap(10);
-		addSection("COMPETITIONS");
-		addCompetitionShortcut("BOSS OF THE WEEK", data.botw, EventPage.BOTW);
+		addGap(12);
+		addHeading("COMPETITIONS");
+		competitionShortcut("BOSS OF THE WEEK", "BOTW", data.botw);
 		addGap(7);
-		addCompetitionShortcut("SKILL OF THE WEEK", data.sotw, EventPage.SOTW);
+		competitionShortcut("SKILL OF THE WEEK", "SOTW", data.sotw);
 		finishContent();
 	}
 
-	private JPanel buildEventCard(SixthDegreeApiClient.EventItem event)
+	private JPanel eventCard(SixthDegreeApiClient.EventItem event)
 	{
 		JPanel panel = card();
 		addCardTitle(panel, event.live ? "LIVE" : "UPCOMING");
 		addCardStrong(panel, escape(nullTo(event.title, "Clan Event")));
 		addCardText(panel, event.live ? "Ends " + remaining(event.end_time) : formatDate(event.start_time));
-		if (event.world > 0)
-		{
-			addCardText(panel, "World <b>" + event.world + "</b>");
-		}
-		if (event.location != null && !event.location.isBlank())
-		{
-			addCardText(panel, escape(event.location));
-		}
-		if (event.requirements != null && !event.requirements.isBlank())
-		{
-			addCardText(panel, "Requires: " + escape(event.requirements));
-		}
-		if (event.description != null && !event.description.isBlank())
-		{
-			addCardText(panel, escape(trim(event.description, 150)));
-		}
+		if (event.world > 0) addCardText(panel, "World <b>" + event.world + "</b>");
+		if (event.location != null && !event.location.isBlank()) addCardText(panel, escape(event.location));
+		if (event.requirements != null && !event.requirements.isBlank()) addCardText(panel, "Requires: " + escape(event.requirements));
+		if (event.description != null && !event.description.isBlank()) addCardText(panel, escape(trim(event.description, 150)));
 		addCardText(panel, event.attending_count + " attending on Discord");
 		return panel;
 	}
 
-	private void addCompetitionShortcut(
-		String title,
-		SixthDegreeApiClient.CompetitionResponse response,
-		EventPage target)
+	private void competitionShortcut(String title, String kind, SixthDegreeApiClient.CompetitionResponse response)
 	{
 		JPanel panel = card();
 		addCardTitle(panel, title);
@@ -502,96 +449,65 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			addCardStrong(panel, escape(nullTo(response.active.metric, response.active.title)));
 			addCardText(panel, "Ends " + remaining(response.active.end_time));
-			if (response.active.you != null)
-			{
-				String kind = target == EventPage.BOTW ? "BOTW" : "SOTW";
-				addCardText(panel, "You: <b>#" + response.active.you.rank + " • " + formatScore(response.active.you.score, kind) + "</b>");
-			}
+			if (response.active.you != null) addCardText(panel, "You: <b>#" + response.active.you.rank + " • " + formatScore(response.active.you.score, kind) + "</b>");
 		}
 		else
 		{
 			addCardText(panel, "Nothing live right now.");
 		}
-		JButton open = compactButton(target == EventPage.BOTW ? "Open BOTW" : "Open SOTW");
-		open.addActionListener(e -> selectEvent(target));
+		JButton open = smallButton("Open " + kind);
+		open.addActionListener(e ->
+		{
+			eventPage = "BOTW".equals(kind) ? EventPage.BOTW : EventPage.SOTW;
+			buildEventSubNav();
+			loadEventPage();
+		});
 		panel.add(Box.createRigidArea(new Dimension(0, 6)));
 		panel.add(open);
 		addCard(panel);
 	}
 
-	private void renderCompetition(
-		EventPage page,
-		SixthDegreeApiClient.CompetitionResponse data,
-		Throwable error)
+	private void renderCompetition(String kind, SixthDegreeApiClient.CompetitionResponse data, Throwable error)
 	{
-		if (currentPrimary != PrimaryPage.EVENTS || currentEvent != page)
-		{
-			return;
-		}
-		String kind = page == EventPage.BOTW ? "BOTW" : "SOTW";
-		String heading = page == EventPage.BOTW ? "BOSS OF THE WEEK" : "SKILL OF THE WEEK";
+		if (primaryPage != PrimaryPage.EVENTS) return;
 		if (error != null || data == null)
 		{
-			renderPageError(heading, error);
+			renderError(kind, error);
 			return;
 		}
-
 		clearContent();
-		addSection(heading);
+		addHeading("BOTW".equals(kind) ? "BOSS OF THE WEEK" : "SKILL OF THE WEEK");
 		if (data.active == null)
 		{
 			JPanel empty = card();
 			addCardStrong(empty, "Nothing live right now");
-			addCardText(empty, page == EventPage.BOTW
-				? "When BOTW starts, boss kills and the leaderboard will appear here automatically."
-				: "When SOTW starts, skill XP gains and the leaderboard will appear here automatically.");
+			addCardText(empty, "BOTW".equals(kind)
+				? "The next boss competition and leaderboard will appear here automatically."
+				: "The next skill competition and XP leaderboard will appear here automatically.");
 			addCard(empty);
-			if (data.recent != null && data.recent.length > 0)
-			{
-				addGap(12);
-				addSection("RECENT");
-				for (SixthDegreeApiClient.RecentCompetition recent : data.recent)
-				{
-					JPanel item = card();
-					addCardStrong(item, escape(nullTo(recent.title, recent.metric)));
-					addCardText(item, formatDate(recent.end_time));
-					addCard(item);
-					addGap(7);
-				}
-			}
 			finishContent();
 			return;
 		}
-
 		SixthDegreeApiClient.Competition active = data.active;
 		JPanel summary = card();
 		addCardStrong(summary, escape(nullTo(active.metric, active.title)));
 		addCardText(summary, "Ends " + remaining(active.end_time));
-		if (active.prize != null && !active.prize.isBlank())
-		{
-			addCardText(summary, "Prize: <b>" + escape(active.prize) + "</b>");
-		}
+		if (active.prize != null && !active.prize.isBlank()) addCardText(summary, "Prize: <b>" + escape(active.prize) + "</b>");
 		if (active.you != null)
 		{
 			addCardText(summary, "Your score: <b>" + formatScore(active.you.score, kind) + "</b> (#" + active.you.rank + ")");
-			if (page == EventPage.SOTW)
-			{
-				addCardText(summary, "Start XP: " + NUMBER.format(active.you.baseline));
-				addCardText(summary, "Current XP: " + NUMBER.format(active.you.current_value));
-			}
+			if ("SOTW".equals(kind)) addCardText(summary, "Start XP: " + NUMBER.format(active.you.baseline) + "<br>Current XP: " + NUMBER.format(active.you.current_value));
 		}
 		addCard(summary);
-
 		addGap(12);
-		addSection("LEADERBOARD");
+		addHeading("LEADERBOARD");
 		if (active.standings == null || active.standings.length == 0)
 		{
-			addMuted("Scores will appear as members start gaining progress.");
+			addCentered("Scores will appear as members gain progress.", MUTED);
 		}
 		else
 		{
-			int shown = Math.min(active.standings.length, 15);
-			for (int i = 0; i < shown; i++)
+			for (int i = 0; i < Math.min(active.standings.length, 15); i++)
 			{
 				SixthDegreeApiClient.Standing standing = active.standings[i];
 				JPanel row = card();
@@ -600,54 +516,53 @@ public class SixthDegreePanel extends PluginPanel
 				addGap(5);
 			}
 		}
-		addGap(8);
-		addMuted("Leaderboard display refreshes about every 15 minutes.");
 		finishContent();
 	}
 
 	private void loadLfg()
 	{
+		showLoading("Looking for Group");
 		apiClient.getLfg(sessionToken).whenComplete((data, error) ->
 			SwingUtilities.invokeLater(() -> renderLfg(data, error, null)));
 	}
 
 	private void renderLfg(SixthDegreeApiClient.LfgResponse data, Throwable error, String status)
 	{
-		if (currentPrimary != PrimaryPage.LFG)
-		{
-			return;
-		}
+		if (primaryPage != PrimaryPage.LFG) return;
 		if (error != null || data == null)
 		{
-			renderPageError("LOOKING FOR GROUP", error);
+			renderError("LOOKING FOR GROUP", error);
 			return;
 		}
-
 		clearContent();
-		addSection("LOOKING FOR GROUP");
-		addMuted("Post what you want to do, then use clan chat to group up.");
-		addGap(9);
+		addHeading("LOOKING FOR GROUP");
+		addCentered("Post what you want to do, then use clan chat to group up.", MUTED);
+		addGap(10);
 
 		JPanel composer = card();
-		addCardText(composer, "What are you doing?");
-		JTextField noteField = new JTextField();
-		noteField.setMaximumSize(new Dimension(182, 28));
-		noteField.setPreferredSize(new Dimension(182, 28));
-		noteField.setToolTipText("Up to 100 characters");
-		composer.add(noteField);
-		composer.add(Box.createRigidArea(new Dimension(0, 7)));
+		addCardTitle(composer, "ACTIVITY");
+		JTextField activity = field("e.g. TOB, Nex, learner TOA");
+		composer.add(activity);
+		composer.add(Box.createRigidArea(new Dimension(0, 8)));
+		addCardTitle(composer, "DESCRIPTION");
+		JTextField description = field("e.g. Need +2, happy to teach");
+		composer.add(description);
+		composer.add(Box.createRigidArea(new Dimension(0, 8)));
 		addCardText(composer, "World <b>" + currentWorld + "</b> • expires after 60 minutes");
-		JButton post = compactButton("Post LFG");
+		JButton post = wideButton("Post LFG");
 		post.addActionListener(e ->
 		{
-			String note = noteField.getText() == null ? "" : noteField.getText().trim();
-			if (note.isEmpty())
+			String activityText = clean(activity.getText());
+			String descriptionText = clean(description.getText());
+			if (activityText.isEmpty())
 			{
-				noteField.requestFocusInWindow();
+				activity.requestFocusInWindow();
 				return;
 			}
+			String note = descriptionText.isEmpty() ? activityText : activityText + " — " + descriptionText;
+			if (note.length() > 100) note = note.substring(0, 100);
 			post.setEnabled(false);
-			apiClient.postLfg(sessionToken, note, currentWorld).whenComplete((result, postError) ->
+			apiClient.postLfg(sessionToken, note, currentWorld).whenComplete((posted, postError) ->
 			{
 				if (postError != null)
 				{
@@ -658,41 +573,40 @@ public class SixthDegreePanel extends PluginPanel
 					SwingUtilities.invokeLater(() -> renderLfg(fresh, freshError, "LFG posted ✓")));
 			});
 		});
-		composer.add(Box.createRigidArea(new Dimension(0, 7)));
+		composer.add(Box.createRigidArea(new Dimension(0, 8)));
 		composer.add(post);
 		addCard(composer);
 
 		addGap(8);
 		JPanel actions = new JPanel(new GridLayout(1, 2, 6, 0));
 		actions.setOpaque(false);
-		JButton refresh = compactButton("Refresh");
+		actions.setMaximumSize(new Dimension(CARD_WIDTH, 32));
+		JButton refresh = smallButton("Refresh");
 		refresh.addActionListener(e -> loadLfg());
-		JButton remove = compactButton("Remove mine");
+		JButton remove = smallButton("Remove mine");
 		remove.addActionListener(e -> apiClient.deleteMyLfg(sessionToken).whenComplete((ignored, deleteError) ->
 			apiClient.getLfg(sessionToken).whenComplete((fresh, freshError) ->
 				SwingUtilities.invokeLater(() -> renderLfg(fresh, freshError, deleteError == null ? "Your LFG was removed." : errorText(deleteError))))));
 		actions.add(refresh);
 		actions.add(remove);
-		addCenteredFixed(actions, CARD_WIDTH, 30);
-
+		content.add(centerRow(actions));
 		if (status != null && !status.isBlank())
 		{
-			addGap(8);
-			addMuted(escape(status));
+			addGap(7);
+			addCentered(escape(status), MUTED);
 		}
-
 		addGap(12);
-		addSection("ACTIVE");
+		addHeading("ACTIVE");
 		if (data.entries == null || data.entries.length == 0)
 		{
-			addMuted("Nobody is looking for a group right now.");
+			addCentered("Nobody is looking for a group right now.", MUTED);
 		}
 		else
 		{
 			for (SixthDegreeApiClient.LfgEntry entry : data.entries)
 			{
 				JPanel item = card();
-				boolean mine = entry.rsn != null && memberRsn != null && entry.rsn.equalsIgnoreCase(memberRsn);
+				boolean mine = entry.rsn != null && entry.rsn.equalsIgnoreCase(memberRsn);
 				addCardStrong(item, escape(nullTo(entry.rsn, "Clan member")) + (mine ? " • YOU" : ""));
 				addCardText(item, escape(nullTo(entry.note, "")));
 				addCardText(item, "W<b>" + entry.world + "</b> • " + remaining(entry.expires_at) + " left");
@@ -703,71 +617,72 @@ public class SixthDegreePanel extends PluginPanel
 		finishContent();
 	}
 
-	private void renderAccess(String message, String buttonText, Runnable buttonAction, String footer)
+	private void addRule(String title, JsonObject rule, boolean threshold)
+	{
+		JPanel panel = card();
+		addCardTitle(panel, title);
+		addCardText(panel, bool(rule, "enabled", false) ? "Enabled ✓" : "Disabled");
+		if (threshold && rule != null && rule.has("minimum_value"))
+		{
+			try { addCardText(panel, "Minimum: <b>" + NUMBER.format(rule.get("minimum_value").getAsLong()) + " gp</b>"); }
+			catch (Exception ignored) { }
+		}
+		if (bool(rule, "screenshots", false)) addCardText(panel, "Screenshots ✓");
+		addCard(panel);
+	}
+
+	private void renderAccess(String message, String buttonText, Runnable action, String footer)
 	{
 		clearContent();
-		addGap(20);
-		addCenteredHtml(message, 14f, WHITE);
-		if (buttonText != null && buttonAction != null)
+		addGap(10);
+		addCentered(message, WHITE);
+		if (buttonText != null && action != null)
 		{
-			addGap(20);
-			JButton button = largeButton(buttonText);
-			button.addActionListener(e -> buttonAction.run());
+			addGap(18);
+			JButton button = wideButton(buttonText);
+			button.setPreferredSize(new Dimension(170, 36));
+			button.setMinimumSize(new Dimension(170, 36));
+			button.setMaximumSize(new Dimension(170, 36));
+			button.addActionListener(e -> action.run());
 			content.add(centerRow(button));
 		}
 		if (footer != null && !footer.isBlank())
 		{
-			addGap(15);
-			addCenteredHtml(footer, 12.5f, MUTED);
+			addGap(18);
+			addCentered(footer, MUTED);
 		}
 		finishContent();
 	}
 
-	private void showLoading(String page)
+	private void showLoading(String name)
 	{
 		clearContent();
-		addGap(20);
-		addCenteredHtml("Loading <b>" + escape(page) + "</b>…", 14f, MUTED);
+		addGap(15);
+		addCentered("Loading <b>" + escape(name) + "</b>…", MUTED);
 		finishContent();
 	}
 
-	private void renderPageError(String page, Throwable error)
+	private void renderError(String name, Throwable error)
 	{
 		clearContent();
-		addSection(page.toUpperCase(Locale.ROOT));
+		addHeading(name.toUpperCase(Locale.ROOT));
 		JPanel panel = card();
 		addCardStrong(panel, "Couldn’t load this page");
 		addCardText(panel, escape(errorText(error)));
-		JButton retry = compactButton("Retry");
-		retry.addActionListener(e -> retryCurrent());
-		panel.add(Box.createRigidArea(new Dimension(0, 7)));
-		panel.add(retry);
 		addCard(panel);
 		finishContent();
-	}
-
-	private void retryCurrent()
-	{
-		if (currentPrimary == PrimaryPage.EVENTS)
-		{
-			selectEvent(currentEvent);
-		}
-		else if (currentPrimary != null)
-		{
-			selectPrimary(currentPrimary);
-		}
 	}
 
 	private void leaveMemberMode()
 	{
 		memberRsn = null;
 		sessionToken = null;
-		currentPrimary = null;
-		currentEvent = EventPage.EVENT_HOME;
+		primaryPage = null;
 		primaryGroup.clearSelection();
-		eventGroup.clearSelection();
+		secondaryGroup.clearSelection();
 		primaryNav.setVisible(false);
-		eventNav.setVisible(false);
+		secondaryNav.setVisible(false);
+		secondaryNav.removeAll();
 	}
 
 	private void clearContent()
@@ -777,41 +692,24 @@ public class SixthDegreePanel extends PluginPanel
 
 	private void finishContent()
 	{
+		content.add(Box.createVerticalGlue());
 		content.revalidate();
 		content.repaint();
 		SwingUtilities.invokeLater(() -> scrollPane.getVerticalScrollBar().setValue(0));
 	}
 
-	private void addSection(String text)
+	private void addHeading(String text)
 	{
-		JLabel label = new JLabel(text, SwingConstants.CENTER);
-		label.setForeground(WHITE);
-		label.setFont(label.getFont().deriveFont(Font.BOLD, 13.5f));
-		content.add(centerRow(label));
+		content.add(centerRow(label(text, HEADING, WHITE)));
 		addGap(8);
 	}
 
-	private void addMuted(String text)
+	private void addCentered(String html, Color color)
 	{
-		addCenteredHtml(text, 12.5f, MUTED);
-	}
-
-	private void addCenteredHtml(String html, float size, Color color)
-	{
-		JLabel label = new JLabel("<html><div style='text-align:center;width:" + TEXT_WIDTH + "px'>" + html + "</div></html>", SwingConstants.CENTER);
+		JLabel label = new JLabel("<html><div style='text-align:center;width:" + INNER_WIDTH + "px'>" + html + "</div></html>", SwingConstants.CENTER);
+		label.setFont(BODY);
 		label.setForeground(color);
-		label.setFont(label.getFont().deriveFont(Font.PLAIN, size));
 		content.add(centerRow(label));
-	}
-
-	private void addGap(int height)
-	{
-		JPanel gap = new JPanel();
-		gap.setOpaque(false);
-		gap.setPreferredSize(new Dimension(1, height));
-		gap.setMinimumSize(new Dimension(1, height));
-		gap.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
-		content.add(gap);
 	}
 
 	private JPanel card()
@@ -822,34 +720,30 @@ public class SixthDegreePanel extends PluginPanel
 		panel.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createLineBorder(BORDER),
 			BorderFactory.createEmptyBorder(9, 10, 9, 10)));
+		panel.setMaximumSize(new Dimension(CARD_WIDTH, Short.MAX_VALUE));
+		panel.setPreferredSize(null);
+		panel.setAlignmentX(Component.CENTER_ALIGNMENT);
 		return panel;
 	}
 
 	private void addCard(JPanel panel)
 	{
-		Dimension preferred = panel.getPreferredSize();
-		int height = Math.max(preferred.height, 42);
-		panel.setPreferredSize(new Dimension(CARD_WIDTH, height));
-		panel.setMinimumSize(new Dimension(CARD_WIDTH, height));
-		panel.setMaximumSize(new Dimension(CARD_WIDTH, height));
 		content.add(centerRow(panel));
 	}
 
 	private void addCardTitle(JPanel panel, String text)
 	{
-		JLabel label = new JLabel(text);
-		label.setForeground(MUTED);
-		label.setFont(label.getFont().deriveFont(Font.BOLD, 10.5f));
+		JLabel label = label(text, new Font(Font.SANS_SERIF, Font.BOLD, 10), MUTED);
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.add(label);
-		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(Box.createRigidArea(new Dimension(0, 4)));
 	}
 
 	private void addCardStrong(JPanel panel, String html)
 	{
-		JLabel label = new JLabel("<html><div style='width:180px'><b>" + html + "</b></div></html>");
+		JLabel label = new JLabel("<html><div style='width:" + INNER_WIDTH + "px'><b>" + html + "</b></div></html>");
+		label.setFont(BODY_BOLD);
 		label.setForeground(WHITE);
-		label.setFont(label.getFont().deriveFont(Font.PLAIN, 14f));
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.add(label);
 		panel.add(Box.createRigidArea(new Dimension(0, 4)));
@@ -857,136 +751,141 @@ public class SixthDegreePanel extends PluginPanel
 
 	private void addCardText(JPanel panel, String html)
 	{
-		JLabel label = new JLabel("<html><div style='width:180px'>" + html + "</div></html>");
+		JLabel label = new JLabel("<html><div style='width:" + INNER_WIDTH + "px'>" + html + "</div></html>");
+		label.setFont(BODY);
 		label.setForeground(WHITE);
-		label.setFont(label.getFont().deriveFont(Font.PLAIN, 12.5f));
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.add(label);
 		panel.add(Box.createRigidArea(new Dimension(0, 3)));
 	}
 
-	private JButton compactButton(String text)
+	private JTextField field(String tooltip)
+	{
+		JTextField field = new JTextField();
+		field.setFont(BODY);
+		field.setToolTipText(tooltip);
+		field.setAlignmentX(Component.LEFT_ALIGNMENT);
+		field.setMaximumSize(new Dimension(INNER_WIDTH, 30));
+		field.setPreferredSize(new Dimension(INNER_WIDTH, 30));
+		return field;
+	}
+
+	private JToggleButton textToggle(String text)
+	{
+		JToggleButton button = new JToggleButton(text);
+		button.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+		button.setFocusPainted(false);
+		button.setContentAreaFilled(false);
+		button.setOpaque(false);
+		button.setPreferredSize(new Dimension(62, 29));
+		return button;
+	}
+
+	private JToggleButton iconButton(BufferedImage icon, String tooltip)
+	{
+		JToggleButton button = new JToggleButton(new ImageIcon(icon));
+		button.setToolTipText(tooltip);
+		button.setFocusPainted(false);
+		button.setContentAreaFilled(false);
+		button.setOpaque(false);
+		button.setPreferredSize(new Dimension(60, 40));
+		button.setBorder(BorderFactory.createLineBorder(BORDER));
+		return button;
+	}
+
+	private JButton smallButton(String text)
 	{
 		JButton button = new JButton(text);
-		button.setFont(button.getFont().deriveFont(Font.BOLD, 12f));
+		button.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+		button.setFocusPainted(false);
+		return button;
+	}
+
+	private JButton wideButton(String text)
+	{
+		JButton button = new JButton(text);
+		button.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
 		button.setFocusPainted(false);
 		button.setAlignmentX(Component.CENTER_ALIGNMENT);
 		return button;
-	}
-
-	private JButton largeButton(String text)
-	{
-		JButton button = new JButton(text);
-		button.setFont(button.getFont().deriveFont(Font.BOLD, 13.5f));
-		button.setFocusPainted(false);
-		button.setPreferredSize(new Dimension(170, 38));
-		button.setMinimumSize(new Dimension(170, 38));
-		button.setMaximumSize(new Dimension(170, 38));
-		return button;
-	}
-
-	private void addCenteredFixed(Component component, int width, int height)
-	{
-		component.setPreferredSize(new Dimension(width, height));
-		component.setMinimumSize(new Dimension(width, height));
-		component.setMaximumSize(new Dimension(width, height));
-		content.add(centerRow(component));
 	}
 
 	private JPanel centerRow(Component component)
 	{
 		JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
 		row.setOpaque(false);
-		row.add(component);
-		Dimension preferred = component.getPreferredSize();
-		row.setPreferredSize(new Dimension(Math.max(CARD_WIDTH, preferred.width), preferred.height));
-		row.setMinimumSize(new Dimension(1, preferred.height));
-		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferred.height));
 		row.setAlignmentX(Component.CENTER_ALIGNMENT);
+		Dimension preferred = row.getPreferredSize();
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferred.height));
+		row.add(component);
 		return row;
 	}
 
-	private JLabel titleLabel(String text, float size)
+	private JLabel label(String text, Font font, Color color)
 	{
 		JLabel label = new JLabel(text, SwingConstants.CENTER);
-		label.setForeground(WHITE);
-		label.setFont(label.getFont().deriveFont(Font.BOLD, size));
+		label.setFont(font);
+		label.setForeground(color);
 		return label;
 	}
 
-	private static String primaryTooltip(PrimaryPage page)
+	private void addGap(int height)
 	{
-		switch (page)
-		{
-			case HOME: return "Home";
-			case EVENTS: return "Events";
-			case LFG: return "Looking for Group";
-			default: return "Sixth Degree";
-		}
+		content.add(Box.createRigidArea(new Dimension(0, height)));
 	}
 
 	private static BufferedImage buildPrimaryIcon(PrimaryPage page)
 	{
-		BufferedImage image = new BufferedImage(24, 24, BufferedImage.TYPE_INT_ARGB);
+		BufferedImage image = new BufferedImage(26, 26, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g = image.createGraphics();
 		try
 		{
 			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 			g.setColor(Color.WHITE);
 			g.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-			switch (page)
+			if (page == PrimaryPage.HOME)
 			{
-				case HOME:
-					g.fillPolygon(new Polygon(new int[]{3, 12, 21}, new int[]{11, 3, 11}, 3));
-					g.fillRect(6, 10, 12, 10);
-					break;
-				case EVENTS:
-					g.drawRoundRect(3, 5, 18, 16, 3, 3);
-					g.fillRect(3, 8, 18, 3);
-					g.fillRect(7, 2, 2, 6);
-					g.fillRect(15, 2, 2, 6);
-					g.fillOval(7, 13, 3, 3);
-					g.fillOval(14, 13, 3, 3);
-					break;
-				case LFG:
-					g.fillOval(9, 3, 6, 6);
-					g.fillOval(2, 6, 5, 5);
-					g.fillOval(17, 6, 5, 5);
-					g.fillRoundRect(7, 10, 10, 9, 6, 6);
-					g.fillRoundRect(0, 12, 7, 7, 5, 5);
-					g.fillRoundRect(17, 12, 7, 7, 5, 5);
-					break;
-				default:
-					break;
+				g.fillPolygon(new Polygon(new int[]{4, 13, 22}, new int[]{12, 4, 12}, 3));
+				g.fillRect(7, 11, 12, 11);
+			}
+			else if (page == PrimaryPage.EVENTS)
+			{
+				g.drawRoundRect(4, 6, 18, 16, 3, 3);
+				g.fillRect(4, 9, 18, 3);
+				g.fillRect(8, 3, 2, 6);
+				g.fillRect(16, 3, 2, 6);
+			}
+			else
+			{
+				g.fillOval(10, 3, 6, 6);
+				g.fillOval(3, 6, 5, 5);
+				g.fillOval(18, 6, 5, 5);
+				g.fillRoundRect(7, 11, 12, 10, 7, 7);
+				g.fillRoundRect(1, 13, 7, 7, 5, 5);
+				g.fillRoundRect(18, 13, 7, 7, 5, 5);
 			}
 		}
-		finally
-		{
-			g.dispose();
-		}
+		finally { g.dispose(); }
 		return image;
 	}
 
-	private static String activeLabel(SixthDegreeApiClient.CompetitionResponse response)
+	private static String primaryTooltip(PrimaryPage page)
 	{
-		if (response == null || response.active == null)
-		{
-			return "None live";
-		}
-		return nullTo(response.active.metric, response.active.title);
+		if (page == PrimaryPage.HOME) return "Home";
+		if (page == PrimaryPage.EVENTS) return "Events";
+		return "Looking for Group";
 	}
 
-	private static String onOff(JsonObject rule)
+	private static String prettyPeriod(LootPeriod period)
 	{
-		return bool(rule, "enabled", false) ? "On" : "Off";
+		if (period == LootPeriod.DAILY) return "Today";
+		if (period == LootPeriod.WEEKLY) return "This week";
+		return "This month";
 	}
 
 	private static String formatDate(long epochSeconds)
 	{
-		if (epochSeconds <= 0)
-		{
-			return "Time TBC";
-		}
+		if (epochSeconds <= 0) return "Time TBC";
 		return EVENT_TIME.format(Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()));
 	}
 
@@ -996,67 +895,34 @@ public class SixthDegreePanel extends PluginPanel
 		long days = seconds / 86400;
 		long hours = (seconds % 86400) / 3600;
 		long minutes = (seconds % 3600) / 60;
-		if (days > 0)
-		{
-			return days + "d " + hours + "h";
-		}
-		if (hours > 0)
-		{
-			return hours + "h " + minutes + "m";
-		}
+		if (days > 0) return days + "d " + hours + "h";
+		if (hours > 0) return hours + "h " + minutes + "m";
 		return minutes + "m";
 	}
 
 	private static String formatScore(long score, String kind)
 	{
-		return ("SOTW".equalsIgnoreCase(kind) ? "+" : "") + NUMBER.format(score)
-			+ ("SOTW".equalsIgnoreCase(kind) ? " XP" : " KC");
+		return ("SOTW".equals(kind) ? "+" : "") + NUMBER.format(score) + ("SOTW".equals(kind) ? " XP" : " KC");
 	}
 
 	private static JsonObject nested(JsonObject object, String key)
 	{
-		try
-		{
-			return object != null && object.has(key) && object.get(key).isJsonObject()
-				? object.getAsJsonObject(key)
-				: new JsonObject();
-		}
-		catch (Exception ignored)
-		{
-			return new JsonObject();
-		}
+		try { return object != null && object.has(key) && object.get(key).isJsonObject() ? object.getAsJsonObject(key) : new JsonObject(); }
+		catch (Exception ignored) { return new JsonObject(); }
 	}
 
 	private static boolean bool(JsonObject object, String key, boolean fallback)
 	{
-		try
-		{
-			return object != null && object.has(key) ? object.get(key).getAsBoolean() : fallback;
-		}
-		catch (Exception ignored)
-		{
-			return fallback;
-		}
+		try { return object != null && object.has(key) ? object.get(key).getAsBoolean() : fallback; }
+		catch (Exception ignored) { return fallback; }
 	}
 
 	private static String errorText(Throwable throwable)
 	{
 		Throwable current = throwable;
-		while (current != null && current.getCause() != null && current.getClass().getName().contains("Completion"))
-		{
-			current = current.getCause();
-		}
+		while (current != null && current.getCause() != null && current.getClass().getName().contains("Completion")) current = current.getCause();
 		String message = current == null ? null : current.getMessage();
 		return message == null || message.isBlank() ? "Sixth Degree service is unavailable. Please retry." : message;
-	}
-
-	private static String trim(String value, int max)
-	{
-		if (value == null || value.length() <= max)
-		{
-			return value == null ? "" : value;
-		}
-		return value.substring(0, Math.max(0, max - 1)).trim() + "…";
 	}
 
 	private static String nullTo(String value, String fallback)
@@ -1064,17 +930,21 @@ public class SixthDegreePanel extends PluginPanel
 		return value == null || value.isBlank() ? fallback : value;
 	}
 
+	private static String clean(String value)
+	{
+		return value == null ? "" : value.trim().replaceAll("\\s+", " ");
+	}
+
+	private static String trim(String value, int max)
+	{
+		if (value == null || value.length() <= max) return value == null ? "" : value;
+		return value.substring(0, Math.max(0, max - 1)).trim() + "…";
+	}
+
 	private static String escape(String value)
 	{
-		if (value == null)
-		{
-			return "";
-		}
-		return value
-			.replace("&", "&amp;")
-			.replace("<", "&lt;")
-			.replace(">", "&gt;")
-			.replace("\"", "&quot;")
-			.replace("'", "&#39;");
+		if (value == null) return "";
+		return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+			.replace("\"", "&quot;").replace("'", "&#39;");
 	}
 }
