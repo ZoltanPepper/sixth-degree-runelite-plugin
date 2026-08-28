@@ -6,7 +6,6 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
@@ -43,6 +42,7 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.http.api.loottracker.LootRecordType;
+import okhttp3.WebSocket;
 
 @Slf4j
 @PluginDescriptor(
@@ -190,7 +190,7 @@ public class SixthDegreePlugin extends Plugin
 		}
 		if (scheduler != null)
 		{
-			scheduler.shutdown();
+			scheduler.shutdownNow();
 			scheduler = null;
 		}
 		if (navigationButton != null)
@@ -618,7 +618,7 @@ public class SixthDegreePlugin extends Plugin
 		{
 			try
 			{
-				socket.sendClose(WebSocket.NORMAL_CLOSURE, "Sixth Degree session ended");
+				socket.close(1000, "Sixth Degree session ended");
 			}
 			catch (Exception ignored)
 			{
