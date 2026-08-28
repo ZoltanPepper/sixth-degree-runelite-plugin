@@ -1,41 +1,43 @@
 package com.sixthdegree;
 
 import com.google.gson.Gson;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.WebSocket;
-import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
 
 @Singleton
 final class SixthDegreeRealtimeClient
 {
 	private static final String WS_URL = SixthDegreeApiClient.API_BASE.replaceFirst("^https://", "wss://") + "/ws";
 
-	private final HttpClient httpClient = HttpClient.newBuilder()
-		.connectTimeout(Duration.ofSeconds(10))
-		.build();
+	private final OkHttpClient httpClient;
 	private final Gson gson;
 
 	@Inject
-	SixthDegreeRealtimeClient(Gson gson)
+	SixthDegreeRealtimeClient(OkHttpClient httpClient, Gson gson)
 	{
+		this.httpClient = httpClient;
 		this.gson = gson;
 	}
 
 	CompletableFuture<WebSocket> connect(String sessionToken, Consumer<RealtimeEvent> onEvent, Runnable onClosed)
 	{
-		Listener listener = new Listener(gson, onEvent, onClosed);
-		return httpClient.newWebSocketBuilder()
+		CompletableFuture<WebSocket> connected = new CompletableFuture<>();
+		Request request = new Request.Builder()
+			.url(WS_URL)
 			.header("Authorization", "Bearer " + sessionToken)
-			.header("User-Agent", "Sixth-Degree-RuneLite/0.4")
+			.header("User-Agent", "Sixth-Degree-RuneLite/0.5")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite")
-			.connectTimeout(Duration.ofSeconds(15))
-			.buildAsync(URI.create(WS_URL), listener);
+			.build();
+		httpClient.newWebSocket(request, new Listener(gson, onEvent, onClosed, connected));
+		return connected;
 	}
 
 	static final class RealtimeEvent
@@ -46,64 +48,72 @@ final class SixthDegreeRealtimeClient
 		SixthDegreeApiClient.LfgEntry entry;
 	}
 
-	private static final class Listener implements WebSocket.Listener
+	private static final class Listener extends WebSocketListener
 	{
 		private final Gson gson;
 		private final Consumer<RealtimeEvent> onEvent;
 		private final Runnable onClosed;
-		private final StringBuilder text = new StringBuilder();
+		private final CompletableFuture<WebSocket> connected;
+		private final AtomicBoolean closed = new AtomicBoolean(false);
 
-		private Listener(Gson gson, Consumer<RealtimeEvent> onEvent, Runnable onClosed)
+		private Listener(
+			Gson gson,
+			Consumer<RealtimeEvent> onEvent,
+			Runnable onClosed,
+			CompletableFuture<WebSocket> connected)
 		{
 			this.gson = gson;
 			this.onEvent = onEvent;
 			this.onClosed = onClosed;
+			this.connected = connected;
 		}
 
 		@Override
-		public void onOpen(WebSocket webSocket)
+		public void onOpen(WebSocket webSocket, Response response)
 		{
-			webSocket.request(1);
+			connected.complete(webSocket);
 		}
 
 		@Override
-		public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last)
+		public void onMessage(WebSocket webSocket, String text)
 		{
-			text.append(data);
-			if (last)
+			try
 			{
-				try
+				RealtimeEvent event = gson.fromJson(text, RealtimeEvent.class);
+				if (event != null && event.type != null)
 				{
-					RealtimeEvent event = gson.fromJson(text.toString(), RealtimeEvent.class);
-					if (event != null && event.type != null)
-					{
-						onEvent.accept(event);
-					}
-				}
-				catch (Exception ignored)
-				{
-					// Ignore malformed realtime messages; the normal API remains authoritative.
-				}
-				finally
-				{
-					text.setLength(0);
+					onEvent.accept(event);
 				}
 			}
-			webSocket.request(1);
-			return null;
+			catch (Exception ignored)
+			{
+				// Ignore malformed realtime messages; the normal API remains authoritative.
+			}
 		}
 
 		@Override
-		public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason)
+		public void onClosed(WebSocket webSocket, int code, String reason)
 		{
-			onClosed.run();
-			return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
+			notifyClosed();
 		}
 
 		@Override
-		public void onError(WebSocket webSocket, Throwable error)
+		public void onFailure(WebSocket webSocket, Throwable throwable, Response response)
 		{
-			onClosed.run();
+			connected.completeExceptionally(throwable);
+			notifyClosed();
+			if (response != null)
+			{
+				response.close();
+			}
+		}
+
+		private void notifyClosed()
+		{
+			if (closed.compareAndSet(false, true))
+			{
+				onClosed.run();
+			}
 		}
 	}
 }
