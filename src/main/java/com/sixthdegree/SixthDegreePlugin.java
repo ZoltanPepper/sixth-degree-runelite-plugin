@@ -54,7 +54,8 @@ public class SixthDegreePlugin extends Plugin
 	private static final String CONFIG_GROUP = "sixthdegree";
 	private static final int MEMBERSHIP_RECHECK_TICKS = 100;
 	private static final long SESSION_RECHECK_MILLIS = TimeUnit.MINUTES.toMillis(10);
-	private static final long LOOT_FLUSH_SECONDS = 120L;
+	private static final long LOOT_FLUSH_SECONDS = 60L;
+	private static final long LEADERBOARD_REFRESH_SECONDS = 30L;
 
 	@Inject
 	private Client client;
@@ -91,6 +92,7 @@ public class SixthDegreePlugin extends Plugin
 	private ScheduledExecutorService scheduler;
 	private ScheduledFuture<?> authPollTask;
 	private ScheduledFuture<?> lootFlushTask;
+	private ScheduledFuture<?> leaderboardRefreshTask;
 	private ScheduledFuture<?> realtimeGuardTask;
 	private volatile WebSocket realtimeSocket;
 	private int membershipTicks;
@@ -126,6 +128,17 @@ public class SixthDegreePlugin extends Plugin
 			LOOT_FLUSH_SECONDS,
 			LOOT_FLUSH_SECONDS,
 			TimeUnit.SECONDS);
+		leaderboardRefreshTask = scheduler.scheduleAtFixedRate(
+			() -> SwingUtilities.invokeLater(() ->
+			{
+				if (panel != null)
+				{
+					panel.refreshLootLeaderboardIfVisible();
+				}
+			}),
+			LEADERBOARD_REFRESH_SECONDS,
+			LEADERBOARD_REFRESH_SECONDS,
+			TimeUnit.SECONDS);
 		realtimeGuardTask = scheduler.scheduleAtFixedRate(
 			() -> clientThread.invokeLater(this::ensureRealtimeConnected),
 			10,
@@ -148,6 +161,11 @@ public class SixthDegreePlugin extends Plugin
 		{
 			lootFlushTask.cancel(false);
 			lootFlushTask = null;
+		}
+		if (leaderboardRefreshTask != null)
+		{
+			leaderboardRefreshTask.cancel(false);
+			leaderboardRefreshTask = null;
 		}
 		if (realtimeGuardTask != null)
 		{
@@ -616,6 +634,13 @@ public class SixthDegreePlugin extends Plugin
 				if (error == null && response != null && response.ok)
 				{
 					lootService.acknowledge(batch.id);
+					SwingUtilities.invokeLater(() ->
+					{
+						if (panel != null)
+						{
+							panel.refreshLootLeaderboardIfVisible();
+						}
+					});
 				}
 				lootSendInFlight.set(false);
 				if (error == null && lootService.peekBatch() != null && scheduler != null && !scheduler.isShutdown())
