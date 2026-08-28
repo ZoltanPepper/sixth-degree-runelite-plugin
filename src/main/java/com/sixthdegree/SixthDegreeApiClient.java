@@ -12,7 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 
+@Singleton
 final class SixthDegreeApiClient
 {
 	static final String API_BASE = "https://amnesty-bootlace-poach.ngrok-free.dev/runelite/v1";
@@ -21,7 +24,13 @@ final class SixthDegreeApiClient
 		.connectTimeout(Duration.ofSeconds(10))
 		.followRedirects(HttpClient.Redirect.NORMAL)
 		.build();
-	private final Gson gson = new Gson();
+	private final Gson gson;
+
+	@Inject
+	SixthDegreeApiClient(Gson gson)
+	{
+		this.gson = gson;
+	}
 
 	CompletableFuture<AuthStart> startDiscordAuth(String rsn)
 	{
