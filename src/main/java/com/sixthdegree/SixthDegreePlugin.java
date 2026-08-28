@@ -58,6 +58,9 @@ public class SixthDegreePlugin extends Plugin
 	@Inject
 	private ConfigManager configManager;
 
+	@Inject
+	private SixthDegreeConfig config;
+
 	private final SixthDegreeApiClient apiClient = new SixthDegreeApiClient();
 	private final AtomicBoolean authPollInFlight = new AtomicBoolean(false);
 
@@ -83,7 +86,7 @@ public class SixthDegreePlugin extends Plugin
 			return thread;
 		});
 
-		panel = new SixthDegreePanel();
+		panel = new SixthDegreePanel(apiClient);
 		navigationButton = NavigationButton.builder()
 			.tooltip("Sixth Degree")
 			.icon(buildSixthDegreeIcon())
@@ -98,6 +101,7 @@ public class SixthDegreePlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		removeLfgForValidatedAccount();
 		cancelAuthPolling();
 		if (scheduler != null)
 		{
@@ -120,6 +124,10 @@ public class SixthDegreePlugin extends Plugin
 	public void onGameStateChanged(GameStateChanged event)
 	{
 		membershipTicks = 0;
+		if (event.getGameState() == GameState.LOGIN_SCREEN)
+		{
+			removeLfgForValidatedAccount();
+		}
 		refreshAccessState();
 	}
 
@@ -193,11 +201,22 @@ public class SixthDegreePlugin extends Plugin
 		long now = System.currentTimeMillis();
 		if (sessionValid && sameRsn(rsn, validatedRsn) && now - lastSessionCheckMillis < SESSION_RECHECK_MILLIS)
 		{
-			panel.showMemberHome(rsn);
+			showMemberPanel(rsn, token);
 			return;
 		}
 
 		validateSession(rsn, token);
+	}
+
+	private void showMemberPanel(String rsn, String token)
+	{
+		panel.showMemberHome(
+			rsn,
+			token,
+			client.getWorld(),
+			config.notifications(),
+			config.notificationSound()
+		);
 	}
 
 	private void validateSession(String rsn, String token)
@@ -255,7 +274,11 @@ public class SixthDegreePlugin extends Plugin
 		validatedRsn = rsn;
 		sessionValid = true;
 		lastSessionCheckMillis = System.currentTimeMillis();
-		panel.showMemberHome(rsn);
+		String token = loadSessionToken(rsn);
+		if (token != null && !token.isBlank())
+		{
+			showMemberPanel(rsn, token);
+		}
 	}
 
 	private void beginDiscordLink(String rsn)
@@ -353,7 +376,7 @@ public class SixthDegreePlugin extends Plugin
 				validatedRsn = rsn;
 				sessionValid = true;
 				lastSessionCheckMillis = System.currentTimeMillis();
-				panel.showMemberHome(rsn);
+				showMemberPanel(rsn, status.session_token);
 				break;
 			case "denied":
 				finishAuthFailure(rsn, status.reason == null ? "Discord access was not approved." : status.reason);
@@ -377,6 +400,21 @@ public class SixthDegreePlugin extends Plugin
 				reason
 			);
 		}
+	}
+
+	private void removeLfgForValidatedAccount()
+	{
+		String rsn = validatedRsn;
+		if (rsn == null || rsn.isBlank())
+		{
+			return;
+		}
+		String token = loadSessionToken(rsn);
+		if (token == null || token.isBlank())
+		{
+			return;
+		}
+		apiClient.deleteMyLfg(token).exceptionally(error -> null);
 	}
 
 	private void cancelAuthPolling()
