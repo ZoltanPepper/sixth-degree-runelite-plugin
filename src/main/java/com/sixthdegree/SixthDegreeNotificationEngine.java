@@ -107,7 +107,8 @@ final class SixthDegreeNotificationEngine
 		}
 
 		String cleanSource = safeSource(source, "Loot");
-		boolean valueTriggered = total >= current.loot.minimumValue;
+		boolean valueTriggered = parts.stream()
+			.anyMatch(part -> part.value >= current.loot.minimumValue);
 		boolean rarityTriggered = !valueTriggered
 			&& current.loot.rarityOverride > 0
 			&& rarityService.qualifies(cleanSource, reduced, current.loot.rarityOverride);
