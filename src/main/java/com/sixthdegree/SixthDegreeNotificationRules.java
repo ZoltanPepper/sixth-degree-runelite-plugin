@@ -46,7 +46,8 @@ final class SixthDegreeNotificationRules
 				bool(loot, "enabled", true),
 				bool(loot, "screenshots", true),
 				Math.max(0L, lootMinimum),
-				Math.max(0L, longValue(loot, "screenshot_minimum_value", lootMinimum))),
+				Math.max(0L, longValue(loot, "screenshot_minimum_value", lootMinimum)),
+				Math.max(0, integer(loot, "rarity_override", 0))),
 			new BasicRule(bool(pets, "enabled", true), bool(pets, "screenshots", true)),
 			new BasicRule(bool(clogs, "enabled", true), bool(clogs, "screenshots", true)),
 			new MilestoneRule(
@@ -127,12 +128,19 @@ final class SixthDegreeNotificationRules
 	{
 		final long minimumValue;
 		final long screenshotMinimumValue;
+		final int rarityOverride;
 
-		LootRule(boolean enabled, boolean screenshots, long minimumValue, long screenshotMinimumValue)
+		LootRule(
+			boolean enabled,
+			boolean screenshots,
+			long minimumValue,
+			long screenshotMinimumValue,
+			int rarityOverride)
 		{
 			super(enabled, screenshots);
 			this.minimumValue = minimumValue;
 			this.screenshotMinimumValue = screenshotMinimumValue;
+			this.rarityOverride = rarityOverride;
 		}
 	}
 
