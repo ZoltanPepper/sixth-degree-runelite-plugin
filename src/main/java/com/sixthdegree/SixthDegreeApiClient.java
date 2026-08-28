@@ -2,33 +2,34 @@ package com.sixthdegree;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import net.runelite.http.api.RuneLiteAPI;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 @Singleton
 final class SixthDegreeApiClient
 {
 	static final String API_BASE = "https://amnesty-bootlace-poach.ngrok-free.dev/runelite/v1";
+	private static final MediaType PNG = MediaType.get("image/png");
 
-	private final HttpClient httpClient = HttpClient.newBuilder()
-		.connectTimeout(Duration.ofSeconds(10))
-		.followRedirects(HttpClient.Redirect.NORMAL)
-		.build();
+	private final OkHttpClient httpClient;
 	private final Gson gson;
 
 	@Inject
-	SixthDegreeApiClient(Gson gson)
+	SixthDegreeApiClient(OkHttpClient httpClient, Gson gson)
 	{
+		this.httpClient = httpClient;
 		this.gson = gson;
 	}
 
@@ -36,16 +37,15 @@ final class SixthDegreeApiClient
 	{
 		JsonObject payload = new JsonObject();
 		payload.addProperty("rsn", rsn);
-		HttpRequest request = baseRequest(API_BASE + "/auth/session")
-			.header("Content-Type", "application/json")
-			.POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+		Request request = baseRequest(API_BASE + "/auth/session")
+			.post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)))
 			.build();
 		return sendJson(request, AuthStart.class);
 	}
 
 	CompletableFuture<AuthStatus> getDiscordAuthStatus(String requestId)
 	{
-		HttpRequest request = baseRequest(API_BASE + "/auth/status/" + requestId).GET().build();
+		Request request = baseRequest(API_BASE + "/auth/status/" + requestId).get().build();
 		return sendJson(request, AuthStatus.class);
 	}
 
@@ -74,16 +74,15 @@ final class SixthDegreeApiClient
 		JsonObject payload = new JsonObject();
 		payload.addProperty("note", note);
 		payload.addProperty("world", world);
-		HttpRequest request = authedRequest(API_BASE + "/lfg", sessionToken)
-			.header("Content-Type", "application/json")
-			.POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+		Request request = authedRequest(API_BASE + "/lfg", sessionToken)
+			.post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)))
 			.build();
 		return sendJson(request, LfgPostResponse.class);
 	}
 
 	CompletableFuture<BasicResponse> deleteMyLfg(String sessionToken)
 	{
-		HttpRequest request = authedRequest(API_BASE + "/lfg/me", sessionToken).DELETE().build();
+		Request request = authedRequest(API_BASE + "/lfg/me", sessionToken).delete().build();
 		return sendJson(request, BasicResponse.class);
 	}
 
@@ -94,7 +93,7 @@ final class SixthDegreeApiClient
 
 	CompletableFuture<String> getNpcDropRarityData(String sessionToken)
 	{
-		HttpRequest request = authedRequest(API_BASE + "/rarity/npc-drops", sessionToken).GET().build();
+		Request request = authedRequest(API_BASE + "/rarity/npc-drops", sessionToken).get().build();
 		return sendText(request);
 	}
 
@@ -103,22 +102,28 @@ final class SixthDegreeApiClient
 		SixthDegreeNotificationEvent event,
 		byte[] screenshotPng)
 	{
-		String boundary = "----SixthDegree" + UUID.randomUUID().toString().replace("-", "");
-		byte[] body;
-		try
+		MultipartBody.Builder body = new MultipartBody.Builder()
+			.setType(MultipartBody.FORM)
+			.addFormDataPart("event_id", safe(event.eventId))
+			.addFormDataPart("type", safe(event.type))
+			.addFormDataPart("title", safe(event.title))
+			.addFormDataPart("detail", safe(event.detail))
+			.addFormDataPart("source", safe(event.source))
+			.addFormDataPart("value_gp", Long.toString(event.valueGp))
+			.addFormDataPart("occurred_at", Long.toString(event.occurredAt))
+			.addFormDataPart("item_id", Integer.toString(event.itemId))
+			.addFormDataPart("rarity_triggered", Boolean.toString(event.rarityTriggered));
+
+		if (screenshotPng != null && screenshotPng.length > 0)
 		{
-			body = multipart(boundary, event, screenshotPng);
-		}
-		catch (IOException e)
-		{
-			CompletableFuture<NotificationPostResponse> failed = new CompletableFuture<>();
-			failed.completeExceptionally(e);
-			return failed;
+			body.addFormDataPart(
+				"image",
+				"sixth-degree.png",
+				RequestBody.create(PNG, screenshotPng));
 		}
 
-		HttpRequest request = authedRequest(API_BASE + "/notifications/submit", sessionToken)
-			.header("Content-Type", "multipart/form-data; boundary=" + boundary)
-			.POST(HttpRequest.BodyPublishers.ofByteArray(body))
+		Request request = authedRequest(API_BASE + "/notifications/submit", sessionToken)
+			.post(body.build())
 			.build();
 		return sendJson(request, NotificationPostResponse.class);
 	}
@@ -135,9 +140,8 @@ final class SixthDegreeApiClient
 		payload.addProperty("value_gp", valueGp);
 		payload.addProperty("drop_count", dropCount);
 		payload.addProperty("recorded_at", recordedAt);
-		HttpRequest request = authedRequest(API_BASE + "/telemetry/loot-batch", sessionToken)
-			.header("Content-Type", "application/json")
-			.POST(HttpRequest.BodyPublishers.ofString(gson.toJson(payload)))
+		Request request = authedRequest(API_BASE + "/telemetry/loot-batch", sessionToken)
+			.post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)))
 			.build();
 		return sendJson(request, LootBatchResponse.class);
 	}
@@ -149,42 +153,86 @@ final class SixthDegreeApiClient
 
 	private <T> CompletableFuture<T> getAuthed(String path, String token, Class<T> type)
 	{
-		HttpRequest request = authedRequest(API_BASE + path, token).GET().build();
+		Request request = authedRequest(API_BASE + path, token).get().build();
 		return sendJson(request, type);
 	}
 
-	private HttpRequest.Builder authedRequest(String url, String token)
+	private Request.Builder authedRequest(String url, String token)
 	{
 		return baseRequest(url).header("Authorization", "Bearer " + token);
 	}
 
-	private HttpRequest.Builder baseRequest(String url)
+	private Request.Builder baseRequest(String url)
 	{
-		return HttpRequest.newBuilder(URI.create(url))
-			.timeout(Duration.ofSeconds(20))
+		return new Request.Builder()
+			.url(url)
 			.header("Accept", "application/json")
 			.header("User-Agent", "Sixth-Degree-RuneLite/0.5")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite");
 	}
 
-	private <T> CompletableFuture<T> sendJson(HttpRequest request, Class<T> type)
+	private <T> CompletableFuture<T> sendJson(Request request, Class<T> type)
 	{
-		return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-			.thenApply(response ->
+		CompletableFuture<T> future = new CompletableFuture<>();
+		httpClient.newCall(request).enqueue(new Callback()
+		{
+			@Override
+			public void onFailure(Call call, IOException e)
 			{
-				ensureSuccess(response.statusCode(), response.body());
-				return gson.fromJson(response.body(), type);
-			});
+				future.completeExceptionally(e);
+			}
+
+			@Override
+			public void onResponse(Call call, Response response)
+			{
+				try (Response ignored = response)
+				{
+					String body = responseText(response);
+					ensureSuccess(response.code(), body);
+					future.complete(gson.fromJson(body, type));
+				}
+				catch (Exception e)
+				{
+					future.completeExceptionally(e);
+				}
+			}
+		});
+		return future;
 	}
 
-	private CompletableFuture<String> sendText(HttpRequest request)
+	private CompletableFuture<String> sendText(Request request)
 	{
-		return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-			.thenApply(response ->
+		CompletableFuture<String> future = new CompletableFuture<>();
+		httpClient.newCall(request).enqueue(new Callback()
+		{
+			@Override
+			public void onFailure(Call call, IOException e)
 			{
-				ensureSuccess(response.statusCode(), response.body());
-				return response.body();
-			});
+				future.completeExceptionally(e);
+			}
+
+			@Override
+			public void onResponse(Call call, Response response)
+			{
+				try (Response ignored = response)
+				{
+					String body = responseText(response);
+					ensureSuccess(response.code(), body);
+					future.complete(body);
+				}
+				catch (Exception e)
+				{
+					future.completeExceptionally(e);
+				}
+			}
+		});
+		return future;
+	}
+
+	private static String responseText(Response response) throws IOException
+	{
+		ResponseBody body = response.body();
+		return body == null ? "" : body.string();
 	}
 
 	private void ensureSuccess(int status, String body)
@@ -216,49 +264,9 @@ final class SixthDegreeApiClient
 		throw new ApiException(status, reason);
 	}
 
-	private static byte[] multipart(
-		String boundary,
-		SixthDegreeNotificationEvent event,
-		byte[] screenshotPng) throws IOException
+	private static String safe(String value)
 	{
-		ByteArrayOutputStream output = new ByteArrayOutputStream(
-			screenshotPng == null ? 4096 : screenshotPng.length + 4096);
-		writeField(output, boundary, "event_id", event.eventId);
-		writeField(output, boundary, "type", event.type);
-		writeField(output, boundary, "title", event.title);
-		writeField(output, boundary, "detail", event.detail);
-		writeField(output, boundary, "source", event.source);
-		writeField(output, boundary, "value_gp", Long.toString(event.valueGp));
-		writeField(output, boundary, "occurred_at", Long.toString(event.occurredAt));
-		writeField(output, boundary, "item_id", Integer.toString(event.itemId));
-		writeField(output, boundary, "rarity_triggered", Boolean.toString(event.rarityTriggered));
-		if (screenshotPng != null && screenshotPng.length > 0)
-		{
-			writeAscii(output, "--" + boundary + "\r\n");
-			writeAscii(output, "Content-Disposition: form-data; name=\"image\"; filename=\"sixth-degree.png\"\r\n");
-			writeAscii(output, "Content-Type: image/png\r\n\r\n");
-			output.write(screenshotPng);
-			writeAscii(output, "\r\n");
-		}
-		writeAscii(output, "--" + boundary + "--\r\n");
-		return output.toByteArray();
-	}
-
-	private static void writeField(
-		ByteArrayOutputStream output,
-		String boundary,
-		String name,
-		String value) throws IOException
-	{
-		writeAscii(output, "--" + boundary + "\r\n");
-		writeAscii(output, "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n");
-		output.write((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
-		writeAscii(output, "\r\n");
-	}
-
-	private static void writeAscii(ByteArrayOutputStream output, String text) throws IOException
-	{
-		output.write(text.getBytes(StandardCharsets.US_ASCII));
+		return value == null ? "" : value;
 	}
 
 	private static String defaultReason(int status)
