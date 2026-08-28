@@ -24,6 +24,7 @@ import net.runelite.client.util.Text;
 final class SixthDegreeNotificationEngine
 {
 	private static final String COLLECTION_LOG_PREFIX = "New item added to your collection log:";
+	private static final String ITEM_ICON_BASE = "https://static.runelite.net/cache/item/icon/";
 	private static final Pattern BOSS_COUNT = Pattern.compile(
 		"Your (.+?)\\s(?:kill|chest|completion|harvest|success|opened)\\s?count is: ?([\\d,]+)\\b",
 		Pattern.CASE_INSENSITIVE);
@@ -99,29 +100,21 @@ final class SixthDegreeNotificationEngine
 			long unit = price(stack.getId());
 			long value = Math.max(0L, unit * (long) stack.getQuantity());
 			total += value;
-			parts.add(new DropPart(itemName(stack.getId()), stack.getQuantity(), value));
+			parts.add(new DropPart(stack.getId(), itemName(stack.getId()), stack.getQuantity(), value));
 		}
 
-		if (total < current.loot.minimumValue)
+		if (total < current.loot.minimumValue || parts.isEmpty())
 		{
 			return null;
 		}
 
 		parts.sort(Comparator.comparingLong((DropPart part) -> part.value).reversed());
-		String title;
-		if (parts.size() == 1)
-		{
-			DropPart part = parts.get(0);
-			title = part.name + (part.quantity > 1 ? " x" + part.quantity : "");
-		}
-		else
-		{
-			title = "Valuable loot";
-		}
+		DropPart primary = parts.get(0);
+		String title = parts.size() == 1 ? primary.name : "Valuable loot";
 		String detail = parts.stream()
 			.limit(6)
-			.map(part -> part.name + (part.quantity > 1 ? " x" + part.quantity : "")
-				+ (part.value > 0 ? " — " + formatGp(part.value) : ""))
+			.map(part -> part.quantity + "x " + part.name
+				+ (part.value > 0 ? " (" + formatGp(part.value) + ")" : ""))
 			.collect(Collectors.joining("\n"));
 
 		return SixthDegreeNotificationEvent.of(
@@ -130,7 +123,8 @@ final class SixthDegreeNotificationEngine
 			detail,
 			safeSource(source, "Loot"),
 			total,
-			current.loot.screenshots && total >= current.loot.screenshotMinimumValue);
+			current.loot.screenshots && total >= current.loot.screenshotMinimumValue,
+			ITEM_ICON_BASE + primary.itemId + ".png");
 	}
 
 	List<SixthDegreeNotificationEvent> onGameMessage(String rawMessage)
@@ -389,7 +383,25 @@ final class SixthDegreeNotificationEngine
 
 	private static String formatGp(long value)
 	{
-		return String.format(Locale.UK, "%,d gp", value);
+		if (value < 1_000L)
+		{
+			return value + " gp";
+		}
+		if (value < 1_000_000L)
+		{
+			return (value / 1_000L) + "K";
+		}
+		if (value < 1_000_000_000L)
+		{
+			return trimOneDecimal(value / 1_000_000.0) + "M";
+		}
+		return trimOneDecimal(value / 1_000_000_000.0) + "B";
+	}
+
+	private static String trimOneDecimal(double value)
+	{
+		String text = String.format(Locale.UK, "%.1f", value);
+		return text.endsWith(".0") ? text.substring(0, text.length() - 2) : text;
 	}
 
 	private static String formatNumber(long value)
@@ -399,12 +411,14 @@ final class SixthDegreeNotificationEngine
 
 	private static final class DropPart
 	{
+		final int itemId;
 		final String name;
 		final int quantity;
 		final long value;
 
-		DropPart(String name, int quantity, long value)
+		DropPart(int itemId, String name, int quantity, long value)
 		{
+			this.itemId = itemId;
 			this.name = name;
 			this.quantity = quantity;
 			this.value = value;
