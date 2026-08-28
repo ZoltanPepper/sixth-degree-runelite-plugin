@@ -48,3 +48,33 @@ tasks.register('run', JavaExec) {
 	jvmArgs '-ea'
 	args '--developer-mode', '--debug'
 }
+
+tasks.register('devLauncherJar', Jar) {
+	dependsOn tasks.named('testClasses')
+	archiveBaseName = 'sixth-degree-runelite-dev'
+	archiveClassifier = 'launcher'
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	from sourceSets.main.output
+	from sourceSets.test.output
+	manifest {
+		attributes 'Main-Class': pluginMainClass
+	}
+}
+
+tasks.register('devBundle', Zip) {
+	dependsOn tasks.named('devLauncherJar')
+	archiveFileName = 'sixth-degree-runelite-dev.zip'
+	destinationDirectory = layout.buildDirectory.dir('distributions')
+
+	from(tasks.named('devLauncherJar')) {
+		into 'app'
+		rename { 'sixth-degree-runelite-dev.jar' }
+	}
+
+	from({ configurations.testRuntimeClasspath.files.findAll { it.isFile() && it.name.endsWith('.jar') } }) {
+		into 'app/lib'
+	}
+
+	from('dev/run-sixth-degree.bat')
+	from('dev/README.txt')
+}
