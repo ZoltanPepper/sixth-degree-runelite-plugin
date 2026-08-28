@@ -3,10 +3,11 @@ SIXTH DEGREE RUNELITE - DEVELOPMENT TEST BUILD
 This ZIP is for owner/private testing before Plugin Hub release.
 
 1. Extract the entire ZIP to a folder.
-2. Make sure Java 11 or newer is installed.
-3. Double-click run-sixth-degree.bat.
-4. Log into RuneScape normally in the RuneLite window that opens.
-5. Open the Sixth Degree sidebar panel.
+2. Double-click run-sixth-degree.bat.
+3. Log into RuneScape normally in the RuneLite window that opens.
+4. Open the Sixth Degree sidebar panel.
+
+The launcher automatically uses the Java runtime installed with the normal RuneLite Windows launcher. If that is unavailable it falls back to a system Java runtime.
 
 Expected access states:
 - Non-Sixth Degree account: recruitment screen only.
