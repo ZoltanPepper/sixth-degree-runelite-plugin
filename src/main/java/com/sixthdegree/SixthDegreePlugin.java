@@ -88,8 +88,12 @@ public class SixthDegreePlugin extends Plugin
 	@Inject
 	private SixthDegreeNotificationCoordinator notificationCoordinator;
 
-	private final SixthDegreeApiClient apiClient = new SixthDegreeApiClient();
-	private final SixthDegreeRealtimeClient realtimeClient = new SixthDegreeRealtimeClient();
+	@Inject
+	private SixthDegreeApiClient apiClient;
+
+	@Inject
+	private SixthDegreeRealtimeClient realtimeClient;
+
 	private final AtomicBoolean authPollInFlight = new AtomicBoolean(false);
 	private final AtomicBoolean lootSendInFlight = new AtomicBoolean(false);
 	private final AtomicBoolean realtimeConnecting = new AtomicBoolean(false);
