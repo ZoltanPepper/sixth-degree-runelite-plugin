@@ -8,7 +8,10 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 
+@Singleton
 final class SixthDegreeRealtimeClient
 {
 	private static final String WS_URL = SixthDegreeApiClient.API_BASE.replaceFirst("^https://", "wss://") + "/ws";
@@ -16,7 +19,13 @@ final class SixthDegreeRealtimeClient
 	private final HttpClient httpClient = HttpClient.newBuilder()
 		.connectTimeout(Duration.ofSeconds(10))
 		.build();
-	private final Gson gson = new Gson();
+	private final Gson gson;
+
+	@Inject
+	SixthDegreeRealtimeClient(Gson gson)
+	{
+		this.gson = gson;
+	}
 
 	CompletableFuture<WebSocket> connect(String sessionToken, Consumer<RealtimeEvent> onEvent, Runnable onClosed)
 	{
