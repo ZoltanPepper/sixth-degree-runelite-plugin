@@ -2,11 +2,15 @@ package com.sixthdegree;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 final class SixthDegreeApiClient
@@ -79,6 +83,31 @@ final class SixthDegreeApiClient
 		return getAuthed("/notifications", sessionToken, NotificationResponse.class);
 	}
 
+	CompletableFuture<NotificationPostResponse> postNotification(
+		String sessionToken,
+		SixthDegreeNotificationEvent event,
+		byte[] screenshotPng)
+	{
+		String boundary = "----SixthDegree" + UUID.randomUUID().toString().replace("-", "");
+		byte[] body;
+		try
+		{
+			body = multipart(boundary, event, screenshotPng);
+		}
+		catch (IOException e)
+		{
+			CompletableFuture<NotificationPostResponse> failed = new CompletableFuture<>();
+			failed.completeExceptionally(e);
+			return failed;
+		}
+
+		HttpRequest request = authedRequest(API_BASE + "/notifications/submit", sessionToken)
+			.header("Content-Type", "multipart/form-data; boundary=" + boundary)
+			.POST(HttpRequest.BodyPublishers.ofByteArray(body))
+			.build();
+		return sendJson(request, NotificationPostResponse.class);
+	}
+
 	CompletableFuture<LootBatchResponse> postLootBatch(
 		String sessionToken,
 		String batchId,
@@ -117,9 +146,9 @@ final class SixthDegreeApiClient
 	private HttpRequest.Builder baseRequest(String url)
 	{
 		return HttpRequest.newBuilder(URI.create(url))
-			.timeout(Duration.ofSeconds(15))
+			.timeout(Duration.ofSeconds(20))
 			.header("Accept", "application/json")
-			.header("User-Agent", "Sixth-Degree-RuneLite/0.4")
+			.header("User-Agent", "Sixth-Degree-RuneLite/0.5")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite");
 	}
 
@@ -155,6 +184,49 @@ final class SixthDegreeApiClient
 				}
 				return gson.fromJson(response.body(), type);
 			});
+	}
+
+	private static byte[] multipart(
+		String boundary,
+		SixthDegreeNotificationEvent event,
+		byte[] screenshotPng) throws IOException
+	{
+		ByteArrayOutputStream output = new ByteArrayOutputStream(
+			screenshotPng == null ? 4096 : screenshotPng.length + 4096);
+		writeField(output, boundary, "event_id", event.eventId);
+		writeField(output, boundary, "type", event.type);
+		writeField(output, boundary, "title", event.title);
+		writeField(output, boundary, "detail", event.detail);
+		writeField(output, boundary, "source", event.source);
+		writeField(output, boundary, "value_gp", Long.toString(event.valueGp));
+		writeField(output, boundary, "occurred_at", Long.toString(event.occurredAt));
+		if (screenshotPng != null && screenshotPng.length > 0)
+		{
+			writeAscii(output, "--" + boundary + "\r\n");
+			writeAscii(output, "Content-Disposition: form-data; name=\"image\"; filename=\"sixth-degree.png\"\r\n");
+			writeAscii(output, "Content-Type: image/png\r\n\r\n");
+			output.write(screenshotPng);
+			writeAscii(output, "\r\n");
+		}
+		writeAscii(output, "--" + boundary + "--\r\n");
+		return output.toByteArray();
+	}
+
+	private static void writeField(
+		ByteArrayOutputStream output,
+		String boundary,
+		String name,
+		String value) throws IOException
+	{
+		writeAscii(output, "--" + boundary + "\r\n");
+		writeAscii(output, "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n");
+		output.write((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+		writeAscii(output, "\r\n");
+	}
+
+	private static void writeAscii(ByteArrayOutputStream output, String text) throws IOException
+	{
+		output.write(text.getBytes(StandardCharsets.US_ASCII));
 	}
 
 	private static String defaultReason(int status)
@@ -313,6 +385,13 @@ final class SixthDegreeApiClient
 		boolean ok;
 		JsonObject rules;
 		String[] member_controls;
+	}
+
+	static final class NotificationPostResponse
+	{
+		boolean ok;
+		boolean posted;
+		boolean duplicate;
 	}
 
 	static final class LootBatchResponse

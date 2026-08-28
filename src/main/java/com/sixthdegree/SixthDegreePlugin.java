@@ -32,6 +32,7 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.NpcLootReceived;
 import net.runelite.client.events.ServerNpcLoot;
@@ -81,6 +82,12 @@ public class SixthDegreePlugin extends Plugin
 	@Inject
 	private SixthDegreeLootService lootService;
 
+	@Inject
+	private EventBus eventBus;
+
+	@Inject
+	private SixthDegreeNotificationCoordinator notificationCoordinator;
+
 	private final SixthDegreeApiClient apiClient = new SixthDegreeApiClient();
 	private final SixthDegreeRealtimeClient realtimeClient = new SixthDegreeRealtimeClient();
 	private final AtomicBoolean authPollInFlight = new AtomicBoolean(false);
@@ -123,6 +130,9 @@ public class SixthDegreePlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navigationButton);
 
+		notificationCoordinator.start(apiClient);
+		eventBus.register(notificationCoordinator);
+
 		lootFlushTask = scheduler.scheduleAtFixedRate(
 			this::flushLootTelemetry,
 			LOOT_FLUSH_SECONDS,
@@ -157,6 +167,8 @@ public class SixthDegreePlugin extends Plugin
 		flushLootTelemetry();
 		disconnectRealtime();
 		cancelAuthPolling();
+		eventBus.unregister(notificationCoordinator);
+		notificationCoordinator.stop();
 		if (lootFlushTask != null)
 		{
 			lootFlushTask.cancel(false);
@@ -200,6 +212,7 @@ public class SixthDegreePlugin extends Plugin
 			lootService.sealBatch();
 			flushLootTelemetry();
 			disconnectRealtime();
+			notificationCoordinator.deactivate();
 			connectionAnnouncedRsn = null;
 		}
 		refreshAccessState();
@@ -392,6 +405,7 @@ public class SixthDegreePlugin extends Plugin
 			showMemberPanel(rsn, token);
 			announceConnectedOnce(rsn);
 			ensureRealtimeConnected();
+			notificationCoordinator.activate(token);
 			flushLootTelemetry();
 		}
 	}
@@ -494,6 +508,7 @@ public class SixthDegreePlugin extends Plugin
 				showMemberPanel(rsn, status.session_token);
 				announceConnectedOnce(rsn);
 				ensureRealtimeConnected();
+				notificationCoordinator.activate(status.session_token);
 				break;
 			case "denied":
 				finishAuthFailure(rsn, status.reason == null ? "Discord access was not approved." : status.reason);
@@ -698,6 +713,7 @@ public class SixthDegreePlugin extends Plugin
 	private void clearTransientValidation()
 	{
 		disconnectRealtime();
+		notificationCoordinator.deactivate();
 		validatedRsn = null;
 		sessionValid = false;
 		lastSessionCheckMillis = 0;
