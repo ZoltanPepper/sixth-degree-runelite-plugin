@@ -12,6 +12,7 @@ final class SixthDegreeNotificationEvent
 	final long valueGp;
 	final long occurredAt;
 	final boolean screenshot;
+	final int itemId;
 
 	private SixthDegreeNotificationEvent(
 		String eventId,
@@ -21,7 +22,8 @@ final class SixthDegreeNotificationEvent
 		String source,
 		long valueGp,
 		long occurredAt,
-		boolean screenshot)
+		boolean screenshot,
+		int itemId)
 	{
 		this.eventId = eventId;
 		this.type = type;
@@ -31,6 +33,7 @@ final class SixthDegreeNotificationEvent
 		this.valueGp = Math.max(0L, valueGp);
 		this.occurredAt = occurredAt;
 		this.screenshot = screenshot;
+		this.itemId = Math.max(0, itemId);
 	}
 
 	static SixthDegreeNotificationEvent of(
@@ -49,6 +52,27 @@ final class SixthDegreeNotificationEvent
 			source,
 			valueGp,
 			System.currentTimeMillis() / 1000L,
-			screenshot);
+			screenshot,
+			0);
+	}
+
+	static SixthDegreeNotificationEvent loot(
+		String title,
+		String detail,
+		String source,
+		long valueGp,
+		boolean screenshot,
+		int itemId)
+	{
+		return new SixthDegreeNotificationEvent(
+			UUID.randomUUID().toString(),
+			"loot",
+			title,
+			detail,
+			source,
+			valueGp,
+			System.currentTimeMillis() / 1000L,
+			screenshot,
+			itemId);
 	}
 }
