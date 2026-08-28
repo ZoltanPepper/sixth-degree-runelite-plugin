@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -37,6 +38,7 @@ final class SixthDegreeNotificationEngine
 
 	private final Client client;
 	private final ItemManager itemManager;
+	private final SixthDegreeRarityService rarityService;
 	private final Map<Skill, Integer> levels = new EnumMap<>(Skill.class);
 	private final Map<Skill, Integer> experience = new EnumMap<>(Skill.class);
 	private final List<String> lootSignaturesThisTick = new ArrayList<>();
@@ -48,10 +50,14 @@ final class SixthDegreeNotificationEngine
 	private int lastBossTick = -1000;
 
 	@Inject
-	SixthDegreeNotificationEngine(Client client, ItemManager itemManager)
+	SixthDegreeNotificationEngine(
+		Client client,
+		ItemManager itemManager,
+		SixthDegreeRarityService rarityService)
 	{
 		this.client = client;
 		this.itemManager = itemManager;
+		this.rarityService = rarityService;
 	}
 
 	void setRules(SixthDegreeNotificationRules rules)
@@ -83,26 +89,30 @@ final class SixthDegreeNotificationEngine
 			return null;
 		}
 
-		if (duplicateLootThisTick(items))
+		List<ItemStack> reduced = reduceItems(items);
+		if (reduced.isEmpty() || duplicateLootThisTick(reduced, source))
 		{
 			return null;
 		}
 
 		List<DropPart> parts = new ArrayList<>();
 		long total = 0L;
-		for (ItemStack stack : items)
+		for (ItemStack stack : reduced)
 		{
-			if (stack == null || stack.getId() < 0 || stack.getQuantity() <= 0)
-			{
-				continue;
-			}
 			long unit = price(stack.getId());
 			long value = Math.max(0L, unit * (long) stack.getQuantity());
 			total += value;
-			parts.add(new DropPart(itemName(stack.getId()), stack.getQuantity(), value));
+			parts.add(new DropPart(
+				stack.getId(), itemName(stack.getId()), stack.getQuantity(), value));
 		}
 
-		if (total < current.loot.minimumValue)
+		String cleanSource = safeSource(source, "Loot");
+		boolean valueTriggered = parts.stream()
+			.anyMatch(part -> part.value >= current.loot.minimumValue);
+		boolean rarityTriggered = !valueTriggered
+			&& current.loot.rarityOverride > 0
+			&& rarityService.qualifies(cleanSource, reduced, current.loot.rarityOverride);
+		if (!valueTriggered && !rarityTriggered)
 		{
 			return null;
 		}
@@ -111,26 +121,27 @@ final class SixthDegreeNotificationEngine
 		String title;
 		if (parts.size() == 1)
 		{
-			DropPart part = parts.get(0);
-			title = part.name + (part.quantity > 1 ? " x" + part.quantity : "");
+			title = parts.get(0).name;
 		}
 		else
 		{
-			title = "Valuable loot";
+			title = rarityTriggered ? "Rare loot" : "Valuable loot";
 		}
+
 		String detail = parts.stream()
-			.limit(6)
-			.map(part -> part.name + (part.quantity > 1 ? " x" + part.quantity : "")
-				+ (part.value > 0 ? " — " + formatGp(part.value) : ""))
+			.limit(8)
+			.map(part -> part.quantity + " x " + part.name + " — " + formatGp(part.value))
 			.collect(Collectors.joining("\n"));
 
-		return SixthDegreeNotificationEvent.of(
-			"loot",
+		int thumbnailItemId = parts.isEmpty() ? 0 : parts.get(0).itemId;
+		return SixthDegreeNotificationEvent.loot(
 			title,
 			detail,
-			safeSource(source, "Loot"),
+			cleanSource,
 			total,
-			current.loot.screenshots && total >= current.loot.screenshotMinimumValue);
+			current.loot.screenshots && total >= current.loot.screenshotMinimumValue,
+			thumbnailItemId,
+			rarityTriggered);
 	}
 
 	List<SixthDegreeNotificationEvent> onGameMessage(String rawMessage)
@@ -266,7 +277,25 @@ final class SixthDegreeNotificationEngine
 		return events;
 	}
 
-	private boolean duplicateLootThisTick(Collection<ItemStack> items)
+	private static List<ItemStack> reduceItems(Collection<ItemStack> items)
+	{
+		Map<Integer, Integer> quantities = new LinkedHashMap<>();
+		for (ItemStack item : items)
+		{
+			if (item != null && item.getId() >= 0 && item.getQuantity() > 0)
+			{
+				quantities.merge(item.getId(), item.getQuantity(), Integer::sum);
+			}
+		}
+		List<ItemStack> reduced = new ArrayList<>(quantities.size());
+		for (Map.Entry<Integer, Integer> entry : quantities.entrySet())
+		{
+			reduced.add(new ItemStack(entry.getKey(), entry.getValue()));
+		}
+		return reduced;
+	}
+
+	private boolean duplicateLootThisTick(Collection<ItemStack> items, String source)
 	{
 		int tick = client.getTickCount();
 		if (tick != lootSignatureTick)
@@ -274,7 +303,7 @@ final class SixthDegreeNotificationEngine
 			lootSignatureTick = tick;
 			lootSignaturesThisTick.clear();
 		}
-		String signature = items.stream()
+		String signature = safeSource(source, "Loot") + "|" + items.stream()
 			.filter(item -> item != null)
 			.map(item -> item.getId() + "x" + item.getQuantity())
 			.sorted()
@@ -399,12 +428,14 @@ final class SixthDegreeNotificationEngine
 
 	private static final class DropPart
 	{
+		final int itemId;
 		final String name;
 		final int quantity;
 		final long value;
 
-		DropPart(String name, int quantity, long value)
+		DropPart(int itemId, String name, int quantity, long value)
 		{
+			this.itemId = itemId;
 			this.name = name;
 			this.quantity = quantity;
 			this.value = value;

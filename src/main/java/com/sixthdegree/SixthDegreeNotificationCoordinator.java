@@ -31,9 +31,11 @@ final class SixthDegreeNotificationCoordinator
 
 	private final SixthDegreeNotificationEngine engine;
 	private final SixthDegreeScreenshotService screenshots;
+	private final SixthDegreeRarityService rarityService;
 	private final Deque<PendingNotification> pending = new ArrayDeque<>();
 	private final AtomicBoolean sending = new AtomicBoolean(false);
 	private final AtomicBoolean rulesRefreshing = new AtomicBoolean(false);
+	private final AtomicBoolean rarityRefreshing = new AtomicBoolean(false);
 
 	private SixthDegreeApiClient apiClient;
 	private ScheduledExecutorService scheduler;
@@ -43,10 +45,12 @@ final class SixthDegreeNotificationCoordinator
 	@Inject
 	SixthDegreeNotificationCoordinator(
 		SixthDegreeNotificationEngine engine,
-		SixthDegreeScreenshotService screenshots)
+		SixthDegreeScreenshotService screenshots,
+		SixthDegreeRarityService rarityService)
 	{
 		this.engine = engine;
 		this.screenshots = screenshots;
+		this.rarityService = rarityService;
 	}
 
 	void start(SixthDegreeApiClient apiClient)
@@ -124,7 +128,42 @@ final class SixthDegreeNotificationCoordinator
 			{
 				return;
 			}
-			engine.setRules(SixthDegreeNotificationRules.from(response.rules));
+
+			SixthDegreeNotificationRules parsed = SixthDegreeNotificationRules.from(response.rules);
+			if (parsed.loot.rarityOverride > 0 && !rarityService.isLoaded())
+			{
+				// Avoid a small startup window where value notifications work but a rare,
+				// low-value drop could be missed before its rarity table is ready.
+				engine.setRules(SixthDegreeNotificationRules.DISABLED);
+				loadRarityData(token, parsed);
+				return;
+			}
+			engine.setRules(parsed);
+		});
+	}
+
+	private void loadRarityData(String token, SixthDegreeNotificationRules parsed)
+	{
+		if (!rarityRefreshing.compareAndSet(false, true))
+		{
+			return;
+		}
+		apiClient.getNpcDropRarityData(token).whenComplete((json, error) ->
+		{
+			rarityRefreshing.set(false);
+			if (!active || !token.equals(sessionToken))
+			{
+				return;
+			}
+			if (error == null && rarityService.load(json))
+			{
+				log.debug("Sixth Degree NPC rarity data loaded");
+			}
+			else if (error != null)
+			{
+				log.warn("Sixth Degree rarity data unavailable; value-based loot notifications remain active", error);
+			}
+			engine.setRules(parsed);
 		});
 	}
 
@@ -153,7 +192,14 @@ final class SixthDegreeNotificationCoordinator
 	@Subscribe(priority = 0)
 	public void onLootReceived(LootReceived event)
 	{
-		if (!active || event.getType() == LootRecordType.PLAYER)
+		if (!active)
+		{
+			return;
+		}
+		LootRecordType type = event.getType();
+		// Normal NPC loot already arrives through NpcLootReceived/ServerNpcLoot.
+		// Processing LootReceived(NPC) as well can represent the same kill twice.
+		if (type != LootRecordType.EVENT && type != LootRecordType.PICKPOCKET)
 		{
 			return;
 		}
@@ -276,8 +322,6 @@ final class SixthDegreeNotificationCoordinator
 				if (cause instanceof SixthDegreeApiClient.ApiException)
 				{
 					int code = ((SixthDegreeApiClient.ApiException) cause).getStatusCode();
-					// 400/409 means the server deliberately rejected this event due to the
-					// current clan rules. Retrying would only create noise.
 					remove = code == 400 || code == 409 || code == 401 || code == 403;
 					if (code == 409)
 					{

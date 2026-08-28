@@ -83,6 +83,12 @@ final class SixthDegreeApiClient
 		return getAuthed("/notifications", sessionToken, NotificationResponse.class);
 	}
 
+	CompletableFuture<String> getNpcDropRarityData(String sessionToken)
+	{
+		HttpRequest request = authedRequest(API_BASE + "/rarity/npc-drops", sessionToken).GET().build();
+		return sendText(request);
+	}
+
 	CompletableFuture<NotificationPostResponse> postNotification(
 		String sessionToken,
 		SixthDegreeNotificationEvent event,
@@ -157,33 +163,48 @@ final class SixthDegreeApiClient
 		return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
 			.thenApply(response ->
 			{
-				int status = response.statusCode();
-				if (status < 200 || status >= 300)
-				{
-					String reason = defaultReason(status);
-					try
-					{
-						JsonObject error = gson.fromJson(response.body(), JsonObject.class);
-						if (error != null)
-						{
-							if (error.has("reason"))
-							{
-								reason = error.get("reason").getAsString();
-							}
-							else if (error.has("error"))
-							{
-								reason = error.get("error").getAsString() + " (HTTP " + status + ")";
-							}
-						}
-					}
-					catch (Exception ignored)
-					{
-						// Keep the safe status-based message for non-JSON proxy/404 responses.
-					}
-					throw new ApiException(status, reason);
-				}
+				ensureSuccess(response.statusCode(), response.body());
 				return gson.fromJson(response.body(), type);
 			});
+	}
+
+	private CompletableFuture<String> sendText(HttpRequest request)
+	{
+		return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+			.thenApply(response ->
+			{
+				ensureSuccess(response.statusCode(), response.body());
+				return response.body();
+			});
+	}
+
+	private void ensureSuccess(int status, String body)
+	{
+		if (status >= 200 && status < 300)
+		{
+			return;
+		}
+		String reason = defaultReason(status);
+		try
+		{
+			JsonObject error = gson.fromJson(body, JsonObject.class);
+			if (error != null)
+			{
+				if (error.has("reason"))
+				{
+					reason = error.get("reason").getAsString();
+				}
+				else if (error.has("error"))
+				{
+					reason = error.get("error").getAsString() + " (HTTP " + status + ")";
+				}
+			}
+		}
+		catch (Exception ignored)
+		{
+			// Keep the status-based message for non-JSON proxy responses.
+		}
+		throw new ApiException(status, reason);
 	}
 
 	private static byte[] multipart(
@@ -200,6 +221,8 @@ final class SixthDegreeApiClient
 		writeField(output, boundary, "source", event.source);
 		writeField(output, boundary, "value_gp", Long.toString(event.valueGp));
 		writeField(output, boundary, "occurred_at", Long.toString(event.occurredAt));
+		writeField(output, boundary, "item_id", Integer.toString(event.itemId));
+		writeField(output, boundary, "rarity_triggered", Boolean.toString(event.rarityTriggered));
 		if (screenshotPng != null && screenshotPng.length > 0)
 		{
 			writeAscii(output, "--" + boundary + "\r\n");
