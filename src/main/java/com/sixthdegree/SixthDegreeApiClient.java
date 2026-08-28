@@ -198,6 +198,7 @@ final class SixthDegreeApiClient
 		writeField(output, boundary, "title", event.title);
 		writeField(output, boundary, "detail", event.detail);
 		writeField(output, boundary, "source", event.source);
+		writeField(output, boundary, "thumbnail_url", event.thumbnailUrl);
 		writeField(output, boundary, "value_gp", Long.toString(event.valueGp));
 		writeField(output, boundary, "occurred_at", Long.toString(event.occurredAt));
 		if (screenshotPng != null && screenshotPng.length > 0)
