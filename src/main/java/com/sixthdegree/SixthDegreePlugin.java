@@ -148,6 +148,7 @@ public class SixthDegreePlugin extends Plugin
 				if (panel != null)
 				{
 					panel.refreshLootLeaderboardIfVisible();
+					panel.refreshCompetitionIfVisible();
 				}
 			}),
 			LEADERBOARD_REFRESH_SECONDS,
@@ -586,6 +587,15 @@ public class SixthDegreePlugin extends Plugin
 	{
 		if (event == null || event.type == null || !canSendMemberTelemetry())
 		{
+			return;
+		}
+		if ("competition_updated".equalsIgnoreCase(event.type))
+		{
+			notificationCoordinator.refreshCompetitionState();
+			if (panel != null)
+			{
+				SwingUtilities.invokeLater(panel::refreshCompetitionIfVisible);
+			}
 			return;
 		}
 		if ("lfg_posted".equalsIgnoreCase(event.type) && event.entry != null)
