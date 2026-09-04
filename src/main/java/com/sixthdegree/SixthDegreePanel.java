@@ -80,6 +80,7 @@ public class SixthDegreePanel extends PluginPanel
 	private EventPage eventPage = EventPage.EVENT_HOME;
 	private LootPeriod lootPeriod = LootPeriod.WEEKLY;
 	private boolean lootRefreshInFlight;
+	private boolean competitionRefreshInFlight;
 
 	public SixthDegreePanel(SixthDegreeApiClient apiClient)
 	{
@@ -201,6 +202,19 @@ public class SixthDegreePanel extends PluginPanel
 			return;
 		}
 		requestLootLeaderboard(false);
+	}
+
+	/** Refresh live competition standings without moving the member's scroll position. */
+	public void refreshCompetitionIfVisible()
+	{
+		if (sessionToken == null
+			|| primaryPage != PrimaryPage.EVENTS
+			|| eventPage == EventPage.EVENT_HOME
+			|| !isShowing())
+		{
+			return;
+		}
+		requestCompetition(eventPage == EventPage.BOTW ? "BOTW" : "SOTW", false);
 	}
 
 	private void buildPrimaryNavigation()
@@ -442,11 +456,40 @@ public class SixthDegreePanel extends PluginPanel
 		}
 		else
 		{
-			String kind = eventPage == EventPage.BOTW ? "BOTW" : "SOTW";
-			showLoading(kind);
-			apiClient.getCompetition(kind, sessionToken).whenComplete((data, error) ->
-				SwingUtilities.invokeLater(() -> renderCompetition(kind, data, error)));
+			requestCompetition(eventPage == EventPage.BOTW ? "BOTW" : "SOTW", true);
 		}
+	}
+
+	private void requestCompetition(String kind, boolean showSpinner)
+	{
+		if (competitionRefreshInFlight || sessionToken == null)
+		{
+			return;
+		}
+		competitionRefreshInFlight = true;
+		final EventPage requestedPage = "BOTW".equals(kind) ? EventPage.BOTW : EventPage.SOTW;
+		final int scrollPosition = showSpinner ? 0 : scrollPane.getVerticalScrollBar().getValue();
+		if (showSpinner)
+		{
+			showLoading(kind);
+		}
+		apiClient.getCompetition(kind, sessionToken).whenComplete((data, error) ->
+			SwingUtilities.invokeLater(() ->
+			{
+				competitionRefreshInFlight = false;
+				if (primaryPage == PrimaryPage.EVENTS && eventPage == requestedPage)
+				{
+					renderCompetition(kind, data, error);
+					if (!showSpinner)
+					{
+						SwingUtilities.invokeLater(() -> scrollPane.getVerticalScrollBar().setValue(scrollPosition));
+					}
+				}
+				else
+				{
+					refreshCompetitionIfVisible();
+				}
+			}));
 	}
 
 	private void renderEventsHome(SixthDegreeApiClient.Dashboard data, Throwable error)
@@ -529,8 +572,9 @@ public class SixthDegreePanel extends PluginPanel
 
 	private void renderCompetition(String kind, SixthDegreeApiClient.CompetitionResponse data, Throwable error)
 	{
-		if (primaryPage != PrimaryPage.EVENTS) return;
-		if (error != null || data == null)
+		EventPage expectedPage = "BOTW".equals(kind) ? EventPage.BOTW : EventPage.SOTW;
+		if (primaryPage != PrimaryPage.EVENTS || eventPage != expectedPage) return;
+		if (error != null || data == null || !data.ok)
 		{
 			renderError(kind, error);
 			return;
@@ -540,7 +584,7 @@ public class SixthDegreePanel extends PluginPanel
 		if (data.active == null)
 		{
 			JPanel empty = card();
-			addCardStrong(empty, "Nothing live right now");
+			addCardStrong(empty, "Nothing active right now");
 			addCardText(empty, "BOTW".equals(kind)
 				? "The next boss competition and leaderboard will appear here automatically."
 				: "The next skill competition and XP leaderboard will appear here automatically.");
@@ -549,9 +593,21 @@ public class SixthDegreePanel extends PluginPanel
 			return;
 		}
 		SixthDegreeApiClient.Competition active = data.active;
+		String state = competitionState(active);
 		JPanel summary = card();
+		addCardTitle(summary, state);
 		addCardStrong(summary, escape(nullTo(active.metric, active.title)));
-		addCardText(summary, "Ends " + remaining(active.end_time));
+		if ("UPCOMING".equals(state))
+		{
+			addCardText(summary, "Starts " + formatDate(active.start_time));
+		}
+		else
+		{
+			addCardText(summary, "Ends " + remaining(active.end_time));
+		}
+		if ("PAUSED".equals(state)) addCardText(summary, "Scoring is temporarily paused.");
+		if ("CLOSING".equals(state)) addCardText(summary, "Final standings are being calculated.");
+		if (active.description != null && !active.description.isBlank()) addCardText(summary, escape(trim(active.description, 180)));
 		if (active.prize != null && !active.prize.isBlank()) addCardText(summary, "Prize: <b>" + escape(active.prize) + "</b>");
 		if (active.you != null)
 		{
@@ -567,9 +623,8 @@ public class SixthDegreePanel extends PluginPanel
 		}
 		else
 		{
-			for (int i = 0; i < Math.min(active.standings.length, 15); i++)
+			for (SixthDegreeApiClient.Standing standing : active.standings)
 			{
-				SixthDegreeApiClient.Standing standing = active.standings[i];
 				JPanel row = card();
 				addCardText(row, "<b>" + standing.rank + ". " + escape(standing.rsn) + "</b><br>" + formatScore(standing.score, kind));
 				addCard(row);
@@ -740,6 +795,7 @@ public class SixthDegreePanel extends PluginPanel
 		sessionToken = null;
 		primaryPage = null;
 		lootRefreshInFlight = false;
+		competitionRefreshInFlight = false;
 		primaryGroup.clearSelection();
 		secondaryGroup.clearSelection();
 		primaryNav.setVisible(false);
@@ -996,6 +1052,18 @@ public class SixthDegreePanel extends PluginPanel
 		if (days > 0) return days + "d " + hours + "h";
 		if (hours > 0) return hours + "h " + minutes + "m";
 		return minutes + "m";
+	}
+
+	private static String competitionState(SixthDegreeApiClient.Competition competition)
+	{
+		if (competition == null) return "INACTIVE";
+		String status = competition.status == null ? "" : competition.status.toUpperCase(Locale.ROOT);
+		if ("CLOSING".equals(status)) return "CLOSING";
+		if (competition.paused) return "PAUSED";
+		long now = Instant.now().getEpochSecond();
+		if (competition.start_time > now) return "UPCOMING";
+		if (competition.live || ("ACTIVE".equals(status) && now <= competition.end_time)) return "LIVE";
+		return status.isBlank() ? "ACTIVE" : status;
 	}
 
 	private static String formatScore(long score, String kind)
