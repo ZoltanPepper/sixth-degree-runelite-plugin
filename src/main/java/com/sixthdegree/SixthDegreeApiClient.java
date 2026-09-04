@@ -61,7 +61,28 @@ final class SixthDegreeApiClient
 
 	CompletableFuture<CompetitionResponse> getCompetition(String kind, String sessionToken)
 	{
-		return getAuthed("/competitions/" + kind, sessionToken, CompetitionResponse.class);
+		return getAuthed("/competitions/" + kind + "/state", sessionToken, CompetitionResponse.class);
+	}
+
+	CompletableFuture<CompetitionProgressResponse> postCompetitionProgress(
+		String kind,
+		String sessionToken,
+		int eventId,
+		long delta,
+		long currentValue,
+		long observedAt,
+		String telemetryId)
+	{
+		JsonObject payload = new JsonObject();
+		payload.addProperty("event_id", eventId);
+		payload.addProperty("delta", delta);
+		payload.addProperty("current_value", currentValue);
+		payload.addProperty("observed_at", observedAt);
+		payload.addProperty("telemetry_id", telemetryId);
+		Request request = authedRequest(API_BASE + "/competitions/" + kind + "/progress", sessionToken)
+			.post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)))
+			.build();
+		return sendJson(request, CompetitionProgressResponse.class);
 	}
 
 	CompletableFuture<LfgResponse> getLfg(String sessionToken)
@@ -167,7 +188,7 @@ final class SixthDegreeApiClient
 		return new Request.Builder()
 			.url(url)
 			.header("Accept", "application/json")
-			.header("User-Agent", "Sixth-Degree-RuneLite/0.5")
+			.header("User-Agent", "Sixth-Degree-RuneLite/0.1.1")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite");
 	}
 
@@ -368,11 +389,16 @@ final class SixthDegreeApiClient
 	static final class Competition
 	{
 		int id;
+		int event_id;
 		String title;
+		String description;
 		String metric;
 		long start_time;
 		long end_time;
 		String prize;
+		String status;
+		boolean paused;
+		boolean live;
 		Standing[] standings;
 		Standing you;
 	}
@@ -396,6 +422,14 @@ final class SixthDegreeApiClient
 		long current_value;
 		long score;
 		long updated_at;
+	}
+
+	static final class CompetitionProgressResponse
+	{
+		boolean ok;
+		boolean accepted;
+		boolean paused;
+		Standing standing;
 	}
 
 	static final class LfgResponse
