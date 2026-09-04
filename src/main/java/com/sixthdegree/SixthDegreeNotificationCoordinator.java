@@ -32,6 +32,7 @@ final class SixthDegreeNotificationCoordinator
 	private final SixthDegreeNotificationEngine engine;
 	private final SixthDegreeScreenshotService screenshots;
 	private final SixthDegreeRarityService rarityService;
+	private final SixthDegreeCompetitionTracker competitionTracker;
 	private final Deque<PendingNotification> pending = new ArrayDeque<>();
 	private final AtomicBoolean sending = new AtomicBoolean(false);
 	private final AtomicBoolean rulesRefreshing = new AtomicBoolean(false);
@@ -46,16 +47,19 @@ final class SixthDegreeNotificationCoordinator
 	SixthDegreeNotificationCoordinator(
 		SixthDegreeNotificationEngine engine,
 		SixthDegreeScreenshotService screenshots,
-		SixthDegreeRarityService rarityService)
+		SixthDegreeRarityService rarityService,
+		SixthDegreeCompetitionTracker competitionTracker)
 	{
 		this.engine = engine;
 		this.screenshots = screenshots;
 		this.rarityService = rarityService;
+		this.competitionTracker = competitionTracker;
 	}
 
 	void start(SixthDegreeApiClient apiClient)
 	{
 		this.apiClient = apiClient;
+		competitionTracker.start();
 		if (scheduler == null || scheduler.isShutdown())
 		{
 			scheduler = Executors.newSingleThreadScheduledExecutor(r ->
@@ -76,6 +80,7 @@ final class SixthDegreeNotificationCoordinator
 	void stop()
 	{
 		deactivate();
+		competitionTracker.stop();
 		if (scheduler != null)
 		{
 			scheduler.shutdownNow();
@@ -97,6 +102,7 @@ final class SixthDegreeNotificationCoordinator
 		boolean changed = !active || !token.equals(sessionToken);
 		sessionToken = token;
 		active = true;
+		competitionTracker.activate(token);
 		if (changed)
 		{
 			engine.reset();
@@ -109,8 +115,14 @@ final class SixthDegreeNotificationCoordinator
 	{
 		active = false;
 		sessionToken = null;
+		competitionTracker.deactivate();
 		engine.setRules(SixthDegreeNotificationRules.DISABLED);
 		engine.reset();
+	}
+
+	void refreshCompetitionState()
+	{
+		competitionTracker.refreshState();
 	}
 
 	void refreshRules()
@@ -220,6 +232,7 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		competitionTracker.onChatMessage(event);
 		List<SixthDegreeNotificationEvent> events = engine.onGameMessage(event.getMessage());
 		for (SixthDegreeNotificationEvent notification : events)
 		{
@@ -234,6 +247,7 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		competitionTracker.onStatChanged(event);
 		for (SixthDegreeNotificationEvent notification : engine.onStatChanged(event))
 		{
 			dispatch(notification);
