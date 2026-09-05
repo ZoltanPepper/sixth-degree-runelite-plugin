@@ -14,7 +14,7 @@ The plugin keeps clan events, competitions, LFG and clan notifications in one Ru
 - Boss of the Week (BOTW) standings and tracking
 - Skill of the Week (SOTW) standings and tracking
 - Looking For Group (LFG) with current world and live member notifications
-- Clan-managed loot, pet, collection-log, level/XP and boss KC/PB notifications
+- Clan-managed loot, pet, collection-log, death, level/XP and boss KC/PB notifications
 - Automatic screenshots for notification types enabled by the clan configuration
 
 Bingo is intentionally separate from this plugin and continues to use the existing Sixth Degree Discord system.

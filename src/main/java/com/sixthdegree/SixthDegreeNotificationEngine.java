@@ -16,6 +16,7 @@ import javax.inject.Singleton;
 import net.runelite.api.Client;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.Skill;
+import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.StatChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
@@ -68,6 +69,23 @@ final class SixthDegreeNotificationEngine
 	SixthDegreeNotificationRules getRules()
 	{
 		return rules;
+	}
+
+	SixthDegreeNotificationEvent onActorDeath(ActorDeath event)
+	{
+		SixthDegreeNotificationRules current = rules;
+		if (!current.engineLive || !current.deaths.enabled || event == null
+			|| event.getActor() != client.getLocalPlayer())
+		{
+			return null;
+		}
+		return SixthDegreeNotificationEvent.of(
+			"death",
+			"Oh dear, you are dead!",
+			"A clan member has died.",
+			"",
+			0L,
+			current.deaths.screenshots);
 	}
 
 	void reset()
