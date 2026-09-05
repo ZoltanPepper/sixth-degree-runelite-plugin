@@ -561,7 +561,7 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			addCardStrong(panel, escape(nullTo(response.active.metric, response.active.title)));
 			addCardText(panel, "Ends " + remaining(response.active.end_time));
-			if (response.active.you != null) addCardText(panel, "You: <b>#" + response.active.you.rank + " • " + formatScore(response.active.you.score, kind) + "</b>");
+			if (response.active.you != null) addCardText(panel, "You: <b>#" + response.active.you.rank + " • " + formatScore(response.active.you.score, kind, response.active.metric) + "</b>");
 		}
 		else
 		{
@@ -611,7 +611,7 @@ public class SixthDegreePanel extends PluginPanel
 		if (active.prize != null && !active.prize.isBlank()) addCardText(summary, "Prize: <b>" + escape(active.prize) + "</b>");
 		if (active.you != null)
 		{
-			addCardText(summary, "Your score: <b>" + formatScore(active.you.score, kind) + "</b> (#" + active.you.rank + ")");
+			addCardText(summary, "Your score: <b>" + formatScore(active.you.score, kind, active.metric) + "</b> (#" + active.you.rank + ")");
 			if ("SOTW".equals(kind)) addCardText(summary, "Start XP: " + NUMBER.format(active.you.baseline) + "<br>Current XP: " + NUMBER.format(active.you.current_value));
 		}
 		addCard(summary);
@@ -626,7 +626,7 @@ public class SixthDegreePanel extends PluginPanel
 			for (SixthDegreeApiClient.Standing standing : active.standings)
 			{
 				JPanel row = card();
-				addCardText(row, "<b>" + standing.rank + ". " + escape(standing.rsn) + "</b><br>" + formatScore(standing.score, kind));
+				addCardText(row, "<b>" + standing.rank + ". " + escape(standing.rsn) + "</b><br>" + formatScore(standing.score, kind, active.metric));
 				addCard(row);
 				addGap(5);
 			}
@@ -1066,9 +1066,11 @@ public class SixthDegreePanel extends PluginPanel
 		return status.isBlank() ? "ACTIVE" : status;
 	}
 
-	private static String formatScore(long score, String kind)
+	static String formatScore(long score, String kind, String metric)
 	{
-		return ("SOTW".equals(kind) ? "+" : "") + NUMBER.format(score) + ("SOTW".equals(kind) ? " XP" : " KC");
+		String unit = "SOTW".equals(kind) ? " XP"
+			: SixthDegreeCompetitionTracker.isGotr(metric) ? (score == 1 ? " Rift" : " Rifts") : " KC";
+		return ("SOTW".equals(kind) ? "+" : "") + NUMBER.format(score) + unit;
 	}
 
 	private static JsonObject nested(JsonObject object, String key)
