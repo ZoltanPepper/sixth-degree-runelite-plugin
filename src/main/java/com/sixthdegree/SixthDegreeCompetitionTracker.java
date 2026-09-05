@@ -35,6 +35,9 @@ final class SixthDegreeCompetitionTracker
 		"Your (?:completed|subdued) (.+?) count is: ([\\d,]+)\\b",
 		Pattern.CASE_INSENSITIVE);
 
+	private static final Pattern RIFTS_CLOSED = Pattern.compile(
+		"^Amount of rifts you have closed: ([0-9][0-9,]*)\\.$", Pattern.CASE_INSENSITIVE);
+
 	private final Client client;
 	private final ClientThread clientThread;
 	private final SixthDegreeApiClient apiClient;
@@ -433,7 +436,7 @@ final class SixthDegreeCompetitionTracker
 		return null;
 	}
 
-	private static boolean metricMatches(String configured, String observed)
+	static boolean metricMatches(String configured, String observed)
 	{
 		String a = normaliseBoss(configured);
 		String b = normaliseBoss(observed);
@@ -441,16 +444,32 @@ final class SixthDegreeCompetitionTracker
 		{
 			return false;
 		}
+		if (isGotr(configured) || isGotr(observed))
+		{
+			return isGotr(configured) && isGotr(observed);
+		}
 		return a.equals(b) || (a.length() >= 5 && b.length() >= 5 && (a.contains(b) || b.contains(a)));
 	}
 
-	private static BossCount parseBossCount(String rawMessage)
+	static BossCount parseBossCount(String rawMessage)
 	{
 		if (rawMessage == null || rawMessage.isBlank())
 		{
 			return null;
 		}
 		String message = Text.removeTags(rawMessage).trim();
+		Matcher rifts = RIFTS_CLOSED.matcher(message);
+		if (rifts.matches())
+		{
+			try
+			{
+				return new BossCount("GOTR", Long.parseLong(rifts.group(1).replace(",", "")));
+			}
+			catch (NumberFormatException ignored)
+			{
+				return null;
+			}
+		}
 		Matcher matcher = BOSS_COUNT.matcher(message);
 		if (!matcher.find())
 		{
@@ -470,6 +489,12 @@ final class SixthDegreeCompetitionTracker
 		{
 			return null;
 		}
+	}
+
+	static boolean isGotr(String metric)
+	{
+		String value = normalise(metric);
+		return value.equals("gotr") || value.equals("guardians of the rift") || value.equals("rifts closed");
 	}
 
 	private static String normaliseBoss(String value)
@@ -560,7 +585,7 @@ final class SixthDegreeCompetitionTracker
 		}
 	}
 
-	private static final class BossCount
+	static final class BossCount
 	{
 		final String boss;
 		final long count;
