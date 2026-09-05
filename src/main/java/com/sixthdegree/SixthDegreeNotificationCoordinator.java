@@ -13,6 +13,7 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameState;
+import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.StatChanged;
@@ -252,6 +253,16 @@ final class SixthDegreeNotificationCoordinator
 		{
 			dispatch(notification);
 		}
+	}
+
+	@Subscribe
+	public void onActorDeath(ActorDeath event)
+	{
+		if (!active)
+		{
+			return;
+		}
+		dispatch(engine.onActorDeath(event));
 	}
 
 	@Subscribe
