@@ -26,7 +26,6 @@ import net.runelite.api.clan.ClanSettings;
 import net.runelite.api.events.ClanChannelChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
-import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
@@ -77,9 +76,6 @@ public class SixthDegreePlugin extends Plugin
 	private ChatMessageManager chatMessageManager;
 
 	@Inject
-	private Notifier notifier;
-
-	@Inject
 	private SixthDegreeLootService lootService;
 
 	@Inject
@@ -93,6 +89,9 @@ public class SixthDegreePlugin extends Plugin
 
 	@Inject
 	private SixthDegreeRealtimeClient realtimeClient;
+
+	@Inject
+	private SixthDegreeSoundService sounds;
 
 	private final AtomicBoolean authPollInFlight = new AtomicBoolean(false);
 	private final AtomicBoolean lootSendInFlight = new AtomicBoolean(false);
@@ -118,6 +117,7 @@ public class SixthDegreePlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		sounds.start();
 		scheduler = Executors.newSingleThreadScheduledExecutor(r ->
 		{
 			Thread thread = new Thread(r, "sixth-degree-services");
@@ -125,7 +125,16 @@ public class SixthDegreePlugin extends Plugin
 			return thread;
 		});
 
-		panel = new SixthDegreePanel(apiClient);
+		panel = new SixthDegreePanel(
+			apiClient,
+			message -> clientThread.invokeLater(() ->
+			{
+				addGameMessage(message);
+				if (config.notificationSound())
+				{
+					sounds.play(SixthDegreeSoundService.Cue.LFG);
+				}
+			}));
 		navigationButton = NavigationButton.builder()
 			.tooltip("Sixth Degree")
 			.icon(buildSixthDegreeIcon())
@@ -174,6 +183,7 @@ public class SixthDegreePlugin extends Plugin
 		cancelAuthPolling();
 		eventBus.unregister(notificationCoordinator);
 		notificationCoordinator.stop();
+		sounds.stop();
 		if (lootFlushTask != null)
 		{
 			lootFlushTask.cancel(false);
@@ -345,7 +355,8 @@ public class SixthDegreePlugin extends Plugin
 			token,
 			client.getWorld(),
 			config.notifications(),
-			config.notificationSound()
+			config.notificationSound(),
+			config.deathScreenshots()
 		);
 	}
 
@@ -534,6 +545,10 @@ public class SixthDegreePlugin extends Plugin
 		}
 		connectionAnnouncedRsn = rsn;
 		addGameMessage("You are connected to Sixth Degree.");
+		if (config.notificationSound())
+		{
+			sounds.play(SixthDegreeSoundService.Cue.LOGIN);
+		}
 	}
 
 	private void addGameMessage(String message)
@@ -546,7 +561,7 @@ public class SixthDegreePlugin extends Plugin
 			QueuedMessage.builder()
 				.type(ChatMessageType.CONSOLE)
 				.name("Sixth Degree")
-				.runeLiteFormattedMessage("<col=ffffff>[Sixth Degree]</col> " + message)
+				.runeLiteFormattedMessage("<col=ff69b4>[Sixth Degree] " + message + "</col>")
 				.build());
 	}
 
@@ -605,16 +620,19 @@ public class SixthDegreePlugin extends Plugin
 			{
 				return;
 			}
-			if (!config.notifications())
+			if (!config.notifications() && !config.notificationSound())
 			{
 				return;
 			}
 			String note = entry.note == null || entry.note.isBlank() ? "a group" : entry.note;
 			String line = entry.rsn + " is looking for: " + note + (entry.world > 0 ? " (W" + entry.world + ")" : "");
-			addGameMessage(line);
+			if (config.notifications())
+			{
+				addGameMessage("LFG • " + line);
+			}
 			if (config.notificationSound())
 			{
-				notifier.notify("Sixth Degree LFG: " + line);
+				sounds.play(SixthDegreeSoundService.Cue.LFG);
 			}
 		}
 	}

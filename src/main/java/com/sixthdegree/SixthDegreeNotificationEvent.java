@@ -92,4 +92,23 @@ final class SixthDegreeNotificationEvent
 			itemId,
 			rarityTriggered);
 	}
+
+	SixthDegreeNotificationEvent withScreenshot(boolean enabled)
+	{
+		if (screenshot == enabled)
+		{
+			return this;
+		}
+		return new SixthDegreeNotificationEvent(
+			eventId,
+			type,
+			title,
+			detail,
+			source,
+			valueGp,
+			occurredAt,
+			enabled,
+			itemId,
+			rarityTriggered);
+	}
 }

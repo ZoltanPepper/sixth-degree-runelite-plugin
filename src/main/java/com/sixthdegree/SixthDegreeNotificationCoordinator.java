@@ -17,6 +17,8 @@ import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.NpcLootReceived;
 import net.runelite.client.events.ServerNpcLoot;
@@ -34,6 +36,8 @@ final class SixthDegreeNotificationCoordinator
 	private final SixthDegreeScreenshotService screenshots;
 	private final SixthDegreeRarityService rarityService;
 	private final SixthDegreeCompetitionTracker competitionTracker;
+	private final SixthDegreeSoundService sounds;
+	private final SixthDegreeConfig config;
 	private final Deque<PendingNotification> pending = new ArrayDeque<>();
 	private final AtomicBoolean sending = new AtomicBoolean(false);
 	private final AtomicBoolean rulesRefreshing = new AtomicBoolean(false);
@@ -43,18 +47,23 @@ final class SixthDegreeNotificationCoordinator
 	private ScheduledExecutorService scheduler;
 	private volatile String sessionToken;
 	private volatile boolean active;
+	private long lastQuestSoundAt;
 
 	@Inject
 	SixthDegreeNotificationCoordinator(
 		SixthDegreeNotificationEngine engine,
 		SixthDegreeScreenshotService screenshots,
 		SixthDegreeRarityService rarityService,
-		SixthDegreeCompetitionTracker competitionTracker)
+		SixthDegreeCompetitionTracker competitionTracker,
+		SixthDegreeSoundService sounds,
+		SixthDegreeConfig config)
 	{
 		this.engine = engine;
 		this.screenshots = screenshots;
 		this.rarityService = rarityService;
 		this.competitionTracker = competitionTracker;
+		this.sounds = sounds;
+		this.config = config;
 	}
 
 	void start(SixthDegreeApiClient apiClient)
@@ -262,7 +271,29 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
-		dispatch(engine.onActorDeath(event));
+		SixthDegreeNotificationEvent notification = engine.onActorDeath(event);
+		if (notification != null && !config.deathScreenshots())
+		{
+			notification = notification.withScreenshot(false);
+		}
+		dispatch(notification);
+	}
+
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded event)
+	{
+		if (!active || event == null || event.getGroupId() != InterfaceID.QUESTSCROLL
+			|| !config.notificationSound())
+		{
+			return;
+		}
+		long now = System.currentTimeMillis();
+		if (now - lastQuestSoundAt < 3_000L)
+		{
+			return;
+		}
+		lastQuestSoundAt = now;
+		sounds.play(SixthDegreeSoundService.Cue.QUEST);
 	}
 
 	@Subscribe
@@ -280,6 +311,7 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		playEventSound(event);
 		if (!event.screenshot)
 		{
 			enqueue(new PendingNotification(event, null));
@@ -298,6 +330,28 @@ final class SixthDegreeNotificationCoordinator
 				enqueue(new PendingNotification(event, png));
 			}
 		});
+	}
+
+	private void playEventSound(SixthDegreeNotificationEvent event)
+	{
+		if (!config.notificationSound())
+		{
+			return;
+		}
+		if ("death".equals(event.type))
+		{
+			sounds.play(SixthDegreeSoundService.Cue.DEATH);
+		}
+		else if ("collection_log".equals(event.type))
+		{
+			sounds.play(SixthDegreeSoundService.Cue.COLLECTION_LOG);
+		}
+		else if ("boss_pb".equals(event.type)
+			&& event.title != null
+			&& event.title.toLowerCase(java.util.Locale.ROOT).contains("personal best"))
+		{
+			sounds.play(SixthDegreeSoundService.Cue.PERSONAL_BEST);
+		}
 	}
 
 	private void enqueue(PendingNotification notification)

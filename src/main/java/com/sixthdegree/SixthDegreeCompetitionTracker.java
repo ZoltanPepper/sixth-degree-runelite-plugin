@@ -41,6 +41,8 @@ final class SixthDegreeCompetitionTracker
 	private final Client client;
 	private final ClientThread clientThread;
 	private final SixthDegreeApiClient apiClient;
+	private final SixthDegreeSoundService sounds;
+	private final SixthDegreeConfig config;
 	private final CompetitionContext botw = new CompetitionContext("BOTW");
 	private final CompetitionContext sotw = new CompetitionContext("SOTW");
 	private final AtomicBoolean botwRefreshInFlight = new AtomicBoolean(false);
@@ -51,11 +53,23 @@ final class SixthDegreeCompetitionTracker
 	private volatile boolean active;
 
 	@Inject
-	SixthDegreeCompetitionTracker(Client client, ClientThread clientThread, SixthDegreeApiClient apiClient)
+	SixthDegreeCompetitionTracker(
+		Client client,
+		ClientThread clientThread,
+		SixthDegreeApiClient apiClient,
+		SixthDegreeSoundService sounds,
+		SixthDegreeConfig config)
 	{
 		this.client = client;
 		this.clientThread = clientThread;
 		this.apiClient = apiClient;
+		this.sounds = sounds;
+		this.config = config;
+	}
+
+	SixthDegreeCompetitionTracker(Client client, ClientThread clientThread, SixthDegreeApiClient apiClient)
+	{
+		this(client, clientThread, apiClient, null, null);
 	}
 
 	void start()
@@ -101,7 +115,9 @@ final class SixthDegreeCompetitionTracker
 			clientThread.invokeLater(() ->
 			{
 				botw.reset();
+				botw.resetSoundObservation();
 				sotw.reset();
+				sotw.resetSoundObservation();
 			});
 		}
 		refreshState();
@@ -114,7 +130,9 @@ final class SixthDegreeCompetitionTracker
 		clientThread.invokeLater(() ->
 		{
 			botw.reset();
+			botw.resetSoundObservation();
 			sotw.reset();
+			sotw.resetSoundObservation();
 		});
 	}
 
@@ -161,9 +179,16 @@ final class SixthDegreeCompetitionTracker
 			return;
 		}
 		SixthDegreeApiClient.Competition competition = response.active;
+		boolean previouslyObserved = context.observedResponse;
+		boolean previousEventHadWinner = context.eventId > 0 && context.hadQualifyingScore;
 		if (competition == null || competition.event_id <= 0)
 		{
 			context.reset();
+			context.observedResponse = true;
+			if (previouslyObserved && previousEventHadWinner)
+			{
+				playWinnerSound();
+			}
 			return;
 		}
 
@@ -174,6 +199,10 @@ final class SixthDegreeCompetitionTracker
 		if (!sameEvent)
 		{
 			context.reset();
+			if (previouslyObserved && previousEventHadWinner)
+			{
+				playWinnerSound();
+			}
 		}
 
 		context.eventId = competition.event_id;
@@ -182,8 +211,22 @@ final class SixthDegreeCompetitionTracker
 		context.endTime = competition.end_time;
 		context.status = safe(competition.status).isBlank() ? "ACTIVE" : competition.status.toUpperCase(Locale.ROOT);
 		context.paused = competition.paused;
+		context.hadQualifyingScore = context.hadQualifyingScore || hasQualifyingScore(competition.standings);
 
 		long now = nowSeconds();
+		boolean nowLive = context.isScorable(now);
+		if (nowLive)
+		{
+			if (previouslyObserved && context.soundedEventId != context.eventId
+				&& config != null && config.notificationSound() && sounds != null)
+			{
+				sounds.play("BOTW".equals(context.kind)
+					? SixthDegreeSoundService.Cue.BOTW
+					: SixthDegreeSoundService.Cue.SOTW);
+			}
+			context.soundedEventId = context.eventId;
+		}
+		context.observedResponse = true;
 		if ("SOTW".equals(context.kind))
 		{
 			context.skill = findSkill(context.metric);
@@ -207,6 +250,31 @@ final class SixthDegreeCompetitionTracker
 		{
 			flushProgress(context);
 		}
+	}
+
+	private void playWinnerSound()
+	{
+		if (config != null && config.notificationSound() && sounds != null)
+		{
+			sounds.play(SixthDegreeSoundService.Cue.WINNER);
+		}
+	}
+
+	static boolean hasQualifyingScore(SixthDegreeApiClient.Standing[] standings)
+	{
+		if (standings == null)
+		{
+			return false;
+		}
+		for (SixthDegreeApiClient.Standing standing : standings)
+		{
+			if (standing != null && standing.score > 0L
+				&& standing.rsn != null && !standing.rsn.isBlank())
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	void onChatMessage(ChatMessage event)
@@ -552,6 +620,9 @@ final class SixthDegreeCompetitionTracker
 		long pendingDelta;
 		long pendingObservedAt;
 		String pendingTelemetryId;
+		boolean observedResponse;
+		int soundedEventId;
+		boolean hadQualifyingScore;
 
 		CompetitionContext(String kind)
 		{
@@ -581,7 +652,14 @@ final class SixthDegreeCompetitionTracker
 			baselineSet = false;
 			needsFreshBossBaseline = true;
 			sending = false;
+			hadQualifyingScore = false;
 			clearPending(this);
+		}
+
+		void resetSoundObservation()
+		{
+			observedResponse = false;
+			soundedEventId = 0;
 		}
 	}
 

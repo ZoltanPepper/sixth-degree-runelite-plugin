@@ -16,6 +16,9 @@ The plugin keeps clan events, competitions, LFG and clan notifications in one Ru
 - Looking For Group (LFG) with current world and live member notifications
 - Clan-managed loot, pet, collection-log, death, level/XP and boss KC/PB notifications
 - Automatic screenshots for notification types enabled by the clan configuration
+- Optional death screenshots controlled by each member in RuneLite settings
+- Bundled Sixth Degree sounds for login, LFG, quests, collection-log entries, personal bests, deaths, BOTW/SOTW starts and event winners
+- Bright-pink Sixth Degree game-chat messages, including confirmation when your own LFG is posted
 
 Bingo is intentionally separate from this plugin and continues to use the existing Sixth Degree Discord system.
 
@@ -32,7 +35,7 @@ Discord linking is normally required once per RuneScape account on each PC. The 
 
 Notification thresholds and screenshot rules are set centrally through Boss Lady. Members do not configure webhooks, Discord channels or clan thresholds themselves.
 
-Local member settings are limited to normal RuneLite notification/sound preferences.
+Local member settings control Sixth Degree game-chat notifications, bundled notification sounds and death screenshots.
 
 ## Service and privacy
 
