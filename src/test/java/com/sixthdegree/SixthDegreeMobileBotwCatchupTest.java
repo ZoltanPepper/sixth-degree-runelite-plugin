@@ -74,7 +74,7 @@ public class SixthDegreeMobileBotwCatchupTest
 	public void restoresServerKcAndBackfillsMobileKillsOnNextObservedKc() throws Exception
 	{
 		SixthDegreeApiClient api = mock(SixthDegreeApiClient.class);
-		when(api.postCompetitionProgress(anyString(), anyString(), anyLong() > 0 ? 7 : 7, anyLong(), anyLong(), anyLong(), anyString()))
+		when(api.postCompetitionProgress(anyString(), anyString(), eq(7), anyLong(), anyLong(), anyLong(), anyString()))
 			.thenReturn(new CompletableFuture<>());
 		SixthDegreeCompetitionTracker tracker = new SixthDegreeCompetitionTracker(mock(Client.class), null, api);
 		set(tracker, "active", true);
