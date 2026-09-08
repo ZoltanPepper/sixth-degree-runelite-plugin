@@ -216,6 +216,7 @@ final class SixthDegreeApiClient
 				{
 					future.completeExceptionally(e);
 				}
+			}
 		});
 		return future;
 	}
@@ -244,6 +245,7 @@ final class SixthDegreeApiClient
 				{
 					future.completeExceptionally(e);
 				}
+			}
 		});
 		return future;
 	}
