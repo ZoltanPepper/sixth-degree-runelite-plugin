@@ -11,7 +11,7 @@ The plugin keeps clan events, competitions, LFG and clan notifications in one Ru
 - Discord linking and `Clan Member` role verification
 - Daily, weekly and monthly clan loot leaderboards using all tracked drops
 - Clan events shown in RuneLite; Discord remains the place for RSVP and attendance
-- Boss of the Week (BOTW) standings and tracking
+- Boss of the Week (BOTW) standings and tracking, including catch-up for KC gained on mobile between RuneLite sessions
 - Skill of the Week (SOTW) standings and tracking
 - Looking For Group (LFG) with current world and live member notifications
 - Clan-managed loot, pet, collection-log, death, level/XP and boss KC/PB notifications
