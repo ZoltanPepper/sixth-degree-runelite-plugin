@@ -45,7 +45,10 @@ public class SixthDegreeMobileBotwCatchupTest
 		method.invoke(tracker, context, "test-token", response, null);
 	}
 
-	private static SixthDegreeApiClient.CompetitionResponse botwState(long serverCurrent, boolean paused)
+	private static SixthDegreeApiClient.CompetitionResponse botwState(
+		long serverCurrent,
+		boolean paused,
+		boolean reconcileAllowed)
 	{
 		SixthDegreeApiClient.Standing you = new SixthDegreeApiClient.Standing();
 		you.rsn = "Mobile Tester";
@@ -60,6 +63,7 @@ public class SixthDegreeMobileBotwCatchupTest
 		competition.status = "ACTIVE";
 		competition.paused = paused;
 		competition.live = !paused;
+		competition.reconcile_allowed = reconcileAllowed;
 		competition.you = you;
 		competition.standings = new SixthDegreeApiClient.Standing[]{you};
 
@@ -82,7 +86,7 @@ public class SixthDegreeMobileBotwCatchupTest
 		Object context = botwContext(tracker);
 
 		// Boss Lady last accepted absolute KC 1 before the player switched to mobile.
-		applyState(tracker, context, botwState(1L, false));
+		applyState(tracker, context, botwState(1L, false, true));
 
 		// Ten mobile kills plus the next RuneLite kill means the next observed count is 12.
 		ChatMessage message = new ChatMessage();
@@ -91,6 +95,29 @@ public class SixthDegreeMobileBotwCatchupTest
 
 		verify(api).postCompetitionProgress(
 			eq("BOTW"), eq("test-token"), eq(7), eq(11L), eq(12L), anyLong(), anyString());
+	}
+
+	@Test
+	public void freshSessionDoesNotBackfillAcrossHistoricalPause() throws Exception
+	{
+		SixthDegreeApiClient api = mock(SixthDegreeApiClient.class);
+		when(api.postCompetitionProgress(anyString(), anyString(), eq(7), anyLong(), anyLong(), anyLong(), anyString()))
+			.thenReturn(new CompletableFuture<>());
+		SixthDegreeCompetitionTracker tracker = new SixthDegreeCompetitionTracker(mock(Client.class), null, api);
+		set(tracker, "active", true);
+		set(tracker, "sessionToken", "test-token");
+		Object context = botwContext(tracker);
+
+		// Boss Lady knows a pause happened after KC 1, so the old absolute value is
+		// not safe to bridge from after a fresh RuneLite session.
+		applyState(tracker, context, botwState(1L, false, false));
+
+		ChatMessage message = new ChatMessage();
+		message.setMessage("Your Vorkath kill count is: 12.");
+		tracker.onChatMessage(message);
+
+		verify(api).postCompetitionProgress(
+			eq("BOTW"), eq("test-token"), eq(7), eq(1L), eq(12L), anyLong(), anyString());
 	}
 
 	@Test
@@ -116,7 +143,7 @@ public class SixthDegreeMobileBotwCatchupTest
 		set(context, "baselineSet", true);
 		set(context, "needsFreshBossBaseline", true);
 
-		applyState(tracker, context, botwState(1L, false));
+		applyState(tracker, context, botwState(1L, false, true));
 
 		ChatMessage message = new ChatMessage();
 		message.setMessage("Your Vorkath kill count is: 12.");
