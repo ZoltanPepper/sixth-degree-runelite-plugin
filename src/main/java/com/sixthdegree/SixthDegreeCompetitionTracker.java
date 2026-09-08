@@ -241,9 +241,21 @@ final class SixthDegreeCompetitionTracker
 				baselineTo(context, currentXp);
 			}
 		}
-		else if (!sameEvent || wasPaused != context.paused || !context.isScorable(now))
+		else
 		{
-			context.needsFreshBossBaseline = true;
+			if (!sameEvent || wasPaused != context.paused || !context.isScorable(now))
+			{
+				context.needsFreshBossBaseline = true;
+			}
+
+			// On a fresh RuneLite session, restore the last absolute BOTW value that
+			// Boss Lady accepted. The next matching KC message can then backfill any
+			// kills completed on mobile while the competition remained live.
+			if (!sameEvent && context.isScorable(now) && competition.you != null)
+			{
+				baselineTo(context, competition.you.current_value);
+				context.needsFreshBossBaseline = false;
+			}
 		}
 
 		if (context.isScorable(now))
