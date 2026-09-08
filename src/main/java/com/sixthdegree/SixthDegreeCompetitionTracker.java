@@ -235,8 +235,29 @@ final class SixthDegreeCompetitionTracker
 				baselineTo(context, 0L);
 				return;
 			}
-			long currentXp = Math.max(0, client.getSkillExperience(context.skill));
-			if (!sameEvent || !context.baselineSet || wasPaused != context.paused || !context.isScorable(now))
+			long currentXp = Math.max(0L, client.getSkillExperience(context.skill));
+			if (!sameEvent)
+			{
+				// SOTW can read the player's absolute XP immediately. When Boss Lady says
+				// the last accepted observation is safe to reconcile from, restore it and
+				// submit any XP earned on mobile while the competition stayed live.
+				if (context.isScorable(now) && competition.you != null && competition.reconcile_allowed)
+				{
+					long serverCurrent = Math.max(0L, competition.you.current_value);
+					baselineTo(context, serverCurrent);
+					if (currentXp > serverCurrent)
+					{
+						context.latestValue = currentXp;
+					}
+				}
+				else
+				{
+					// No trusted observation (or a pause occurred while RuneLite was away):
+					// establish a fresh local baseline so lifetime/paused XP is never awarded.
+					baselineTo(context, currentXp);
+				}
+			}
+			else if (!context.baselineSet || wasPaused != context.paused || !context.isScorable(now))
 			{
 				baselineTo(context, currentXp);
 			}
@@ -248,10 +269,10 @@ final class SixthDegreeCompetitionTracker
 				context.needsFreshBossBaseline = true;
 			}
 
-			// On a fresh RuneLite session, restore the last absolute BOTW value that
-			// Boss Lady accepted. The next matching KC message can then backfill any
-			// kills completed on mobile while the competition remained live.
-			if (!sameEvent && context.isScorable(now) && competition.you != null)
+			// On a fresh RuneLite session, restore the last absolute BOTW value only
+			// when Boss Lady confirms no pause boundary occurred after that observation.
+			// The next matching KC message can then backfill kills completed on mobile.
+			if (!sameEvent && context.isScorable(now) && competition.you != null && competition.reconcile_allowed)
 			{
 				baselineTo(context, competition.you.current_value);
 				context.needsFreshBossBaseline = false;
@@ -343,7 +364,8 @@ final class SixthDegreeCompetitionTracker
 		}
 		if (xp < sotw.latestValue)
 		{
-			baselineTo(sotw, xp);
+			// XP cannot legitimately decrease for the linked account. Ignore stale
+			// login/stat events rather than lowering the trusted absolute baseline.
 			return;
 		}
 		if (xp == sotw.latestValue)
