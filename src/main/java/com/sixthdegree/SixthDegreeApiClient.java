@@ -216,7 +216,6 @@ final class SixthDegreeApiClient
 				{
 					future.completeExceptionally(e);
 				}
-			}
 		});
 		return future;
 	}
@@ -245,7 +244,6 @@ final class SixthDegreeApiClient
 				{
 					future.completeExceptionally(e);
 				}
-			}
 		});
 		return future;
 	}
@@ -399,6 +397,7 @@ final class SixthDegreeApiClient
 		String status;
 		boolean paused;
 		boolean live;
+		boolean reconcile_allowed;
 		Standing[] standings;
 		Standing you;
 	}
