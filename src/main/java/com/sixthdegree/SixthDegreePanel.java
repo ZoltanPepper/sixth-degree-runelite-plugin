@@ -57,10 +57,11 @@ public class SixthDegreePanel extends PluginPanel
 
 	private enum PrimaryPage { HOME, EVENTS, LFG }
 	private enum HomePage { LEADERBOARD, SETTINGS }
-	private enum EventPage { EVENT_HOME, BOTW, SOTW }
+	private enum EventPage { EVENT_HOME, BOTW, SOTW, DOMINION }
 	private enum LootPeriod { DAILY, WEEKLY, MONTHLY }
 
 	private final SixthDegreeApiClient apiClient;
+	private final Runnable dominionWarMapAction;
 	private final JPanel header = new JPanel();
 	private final JPanel primaryNav = new JPanel(new GridLayout(1, 3, 7, 0));
 	private final JPanel secondaryNav = new JPanel(new GridLayout(1, 3, 6, 0));
@@ -82,10 +83,11 @@ public class SixthDegreePanel extends PluginPanel
 	private boolean lootRefreshInFlight;
 	private boolean competitionRefreshInFlight;
 
-	public SixthDegreePanel(SixthDegreeApiClient apiClient)
+	public SixthDegreePanel(SixthDegreeApiClient apiClient, Runnable dominionWarMapAction)
 	{
 		super(false);
 		this.apiClient = apiClient;
+		this.dominionWarMapAction = dominionWarMapAction == null ? () -> { } : dominionWarMapAction;
 		setLayout(new BorderLayout());
 
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
@@ -209,7 +211,7 @@ public class SixthDegreePanel extends PluginPanel
 	{
 		if (sessionToken == null
 			|| primaryPage != PrimaryPage.EVENTS
-			|| eventPage == EventPage.EVENT_HOME
+			|| (eventPage != EventPage.BOTW && eventPage != EventPage.SOTW)
 			|| !isShowing())
 		{
 			return;
@@ -290,11 +292,19 @@ public class SixthDegreePanel extends PluginPanel
 	{
 		secondaryNav.removeAll();
 		secondaryGroup.clearSelection();
-		secondaryNav.setLayout(new GridLayout(1, 3, 6, 0));
+		secondaryNav.setLayout(new GridLayout(1, 4, 5, 0));
 		for (EventPage page : EventPage.values())
 		{
-			String text = page == EventPage.EVENT_HOME ? "EVENTS" : page.name();
-			JToggleButton button = textToggle(text);
+			JToggleButton button;
+			if (page == EventPage.DOMINION)
+			{
+				button = subIconToggle(buildDominionIcon(), "Dominion");
+			}
+			else
+			{
+				String text = page == EventPage.EVENT_HOME ? "EVENTS" : page.name();
+				button = textToggle(text);
+			}
 			button.setSelected(page == eventPage);
 			button.setBorder(BorderFactory.createLineBorder(page == eventPage ? SELECTED : BORDER));
 			button.addActionListener(e ->
@@ -454,10 +464,37 @@ public class SixthDegreePanel extends PluginPanel
 			apiClient.getDashboard(sessionToken).whenComplete((data, error) ->
 				SwingUtilities.invokeLater(() -> renderEventsHome(data, error)));
 		}
+		else if (eventPage == EventPage.DOMINION)
+		{
+			dominionWarMapAction.run();
+			renderDominionLauncher();
+		}
 		else
 		{
 			requestCompetition(eventPage == EventPage.BOTW ? "BOTW" : "SOTW", true);
 		}
+	}
+
+	private void renderDominionLauncher()
+	{
+		if (primaryPage != PrimaryPage.EVENTS || eventPage != EventPage.DOMINION)
+		{
+			return;
+		}
+		clearContent();
+		addHeading("DOMINION");
+		JPanel map = card();
+		addCardTitle(map, "WAR MAP");
+		addCardStrong(map, "Live Dominion territory map");
+		addCardText(map, "The full War Map opens over the game client. Territory ownership, battle fronts and Influence scores update automatically.");
+		addCardText(map, "Press <b>Esc</b> to close the map and return to RuneScape.");
+		JButton open = wideButton("Open War Map");
+		open.setMaximumSize(new Dimension(INNER_WIDTH, 32));
+		open.addActionListener(e -> dominionWarMapAction.run());
+		map.add(Box.createRigidArea(new Dimension(0, 7)));
+		map.add(open);
+		addCard(map);
+		finishContent();
 	}
 
 	private void requestCompetition(String kind, boolean showSpinner)
@@ -898,6 +935,17 @@ public class SixthDegreePanel extends PluginPanel
 		return button;
 	}
 
+	private JToggleButton subIconToggle(BufferedImage icon, String tooltip)
+	{
+		JToggleButton button = new JToggleButton(new ImageIcon(icon));
+		button.setToolTipText(tooltip);
+		button.setFocusPainted(false);
+		button.setContentAreaFilled(false);
+		button.setOpaque(false);
+		button.setPreferredSize(new Dimension(42, 29));
+		return button;
+	}
+
 	private JToggleButton iconButton(BufferedImage icon, String tooltip)
 	{
 		JToggleButton button = new JToggleButton(new ImageIcon(icon));
@@ -981,6 +1029,28 @@ public class SixthDegreePanel extends PluginPanel
 				g.fillRoundRect(1, 13, 7, 7, 5, 5);
 				g.fillRoundRect(18, 13, 7, 7, 5, 5);
 			}
+		}
+		finally { g.dispose(); }
+		return image;
+	}
+
+	private static BufferedImage buildDominionIcon()
+	{
+		BufferedImage image = new BufferedImage(22, 22, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = image.createGraphics();
+		try
+		{
+			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			g.setColor(Color.WHITE);
+			g.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+			g.drawLine(4, 3, 18, 17);
+			g.drawLine(18, 3, 4, 17);
+			g.drawLine(3, 14, 7, 18);
+			g.drawLine(15, 18, 19, 14);
+			g.drawLine(5, 4, 8, 3);
+			g.drawLine(17, 4, 14, 3);
+			g.fillOval(2, 17, 4, 4);
+			g.fillOval(16, 17, 4, 4);
 		}
 		finally { g.dispose(); }
 		return image;
