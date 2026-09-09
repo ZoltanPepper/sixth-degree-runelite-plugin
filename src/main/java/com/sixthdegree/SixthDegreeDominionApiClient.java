@@ -2,6 +2,7 @@ package com.sixthdegree;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.annotations.SerializedName;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import javax.inject.Inject;
@@ -122,7 +123,137 @@ final class SixthDegreeDominionApiClient
 	{
 		boolean ok;
 		boolean active;
+		boolean available;
+		boolean scoring_active;
 		String reason;
+		String event_phase;
+		long server_time;
+		Season season;
+		Day day;
+		Team team;
+		@SerializedName("public")
+		PublicState publicState;
+	}
+
+	static final class Season
+	{
+		int id;
+		String slug;
+		String title;
+		String status;
+		long start_time;
+		long end_time;
+		String resolution_timezone;
+		int resolution_hour;
+		int resolution_minute;
+	}
+
+	static final class Day
+	{
+		int season_id;
+		int day_number;
+		long starts_at;
+		long ends_at;
+		String status;
+		long resolved_at;
+	}
+
+	static final class Team
+	{
+		int id;
+		String code;
+		String name;
+		AttackOrders attack_orders;
+		WarReserve war_reserve;
+	}
+
+	static final class AttackOrders
+	{
+		boolean locked;
+		AttackOrder[] orders;
+	}
+
+	static final class AttackOrder
+	{
+		int slot_no;
+		String region_id;
+		String status;
+		long locked_at;
+	}
+
+	static final class WarReserve
+	{
+		long gross_milli;
+		long deployed_milli;
+		long available_milli;
+		String gross_influence;
+		String deployed_influence;
+		String available_influence;
+	}
+
+	static final class PublicState
+	{
+		Territory[] territories;
+		Standing[] dominion_standings;
+		Battle[] battles;
+	}
+
+	static final class Territory
+	{
+		String region_id;
+		Integer owner_team_id;
+		String owner_team_code;
+		String owner_team_name;
+		int held_since_day;
+		int consecutive_days_held;
+		long updated_at;
+	}
+
+	static final class Standing
+	{
+		int team_id;
+		String code;
+		String name;
+		int points;
+	}
+
+	static final class Battle
+	{
+		int id;
+		int season_id;
+		int day_number;
+		String region_id;
+		Integer previous_owner_team_id;
+		Integer winner_team_id;
+		String previous_owner_code;
+		String status;
+		long opened_at;
+		long resolved_at;
+		BattleTeam[] teams;
+		BattleScore[] scores;
+	}
+
+	static final class BattleTeam
+	{
+		int team_id;
+		String role;
+		String code;
+		String name;
+	}
+
+	static final class BattleScore
+	{
+		int team_id;
+		String code;
+		String name;
+		long routine_milli;
+		long nonroutine_milli;
+		long war_deployed_milli;
+		int contributor_count;
+		int unity_bonus_bp;
+		int catch_up_bonus_bp;
+		long routine_adjusted_milli;
+		long final_milli;
 	}
 
 	static final class TelemetryResponse
