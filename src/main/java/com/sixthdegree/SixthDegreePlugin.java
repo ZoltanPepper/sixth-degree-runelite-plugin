@@ -125,7 +125,7 @@ public class SixthDegreePlugin extends Plugin
 			return thread;
 		});
 
-		panel = new SixthDegreePanel(apiClient);
+		panel = new SixthDegreePanel(apiClient, notificationCoordinator::openDominionWarMap);
 		navigationButton = NavigationButton.builder()
 			.tooltip("Sixth Degree")
 			.icon(buildSixthDegreeIcon())
