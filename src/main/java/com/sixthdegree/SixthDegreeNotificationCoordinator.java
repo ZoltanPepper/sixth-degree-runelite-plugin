@@ -34,6 +34,7 @@ final class SixthDegreeNotificationCoordinator
 	private final SixthDegreeScreenshotService screenshots;
 	private final SixthDegreeRarityService rarityService;
 	private final SixthDegreeCompetitionTracker competitionTracker;
+	private final SixthDegreeDominionTelemetry dominionTelemetry;
 	private final Deque<PendingNotification> pending = new ArrayDeque<>();
 	private final AtomicBoolean sending = new AtomicBoolean(false);
 	private final AtomicBoolean rulesRefreshing = new AtomicBoolean(false);
@@ -49,18 +50,21 @@ final class SixthDegreeNotificationCoordinator
 		SixthDegreeNotificationEngine engine,
 		SixthDegreeScreenshotService screenshots,
 		SixthDegreeRarityService rarityService,
-		SixthDegreeCompetitionTracker competitionTracker)
+		SixthDegreeCompetitionTracker competitionTracker,
+		SixthDegreeDominionTelemetry dominionTelemetry)
 	{
 		this.engine = engine;
 		this.screenshots = screenshots;
 		this.rarityService = rarityService;
 		this.competitionTracker = competitionTracker;
+		this.dominionTelemetry = dominionTelemetry;
 	}
 
 	void start(SixthDegreeApiClient apiClient)
 	{
 		this.apiClient = apiClient;
 		competitionTracker.start();
+		dominionTelemetry.start();
 		if (scheduler == null || scheduler.isShutdown())
 		{
 			scheduler = Executors.newSingleThreadScheduledExecutor(r ->
@@ -82,6 +86,7 @@ final class SixthDegreeNotificationCoordinator
 	{
 		deactivate();
 		competitionTracker.stop();
+		dominionTelemetry.stop();
 		if (scheduler != null)
 		{
 			scheduler.shutdownNow();
@@ -104,6 +109,7 @@ final class SixthDegreeNotificationCoordinator
 		sessionToken = token;
 		active = true;
 		competitionTracker.activate(token);
+		dominionTelemetry.activate(token);
 		if (changed)
 		{
 			engine.reset();
@@ -117,6 +123,7 @@ final class SixthDegreeNotificationCoordinator
 		active = false;
 		sessionToken = null;
 		competitionTracker.deactivate();
+		dominionTelemetry.deactivate();
 		engine.setRules(SixthDegreeNotificationRules.DISABLED);
 		engine.reset();
 	}
@@ -145,8 +152,6 @@ final class SixthDegreeNotificationCoordinator
 			SixthDegreeNotificationRules parsed = SixthDegreeNotificationRules.from(response.rules);
 			if (parsed.loot.rarityOverride > 0 && !rarityService.isLoaded())
 			{
-				// Avoid a small startup window where value notifications work but a rare,
-				// low-value drop could be missed before its rarity table is ready.
 				engine.setRules(SixthDegreeNotificationRules.DISABLED);
 				loadRarityData(token, parsed);
 				return;
@@ -187,6 +192,7 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		dominionTelemetry.onNpcLootReceived(event);
 		String source = event.getNpc() == null ? "NPC" : event.getNpc().getName();
 		dispatch(engine.onLoot(event.getItems(), source));
 	}
@@ -198,6 +204,7 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		dominionTelemetry.onServerNpcLoot(event);
 		String source = event.getComposition() == null ? "NPC" : event.getComposition().getName();
 		dispatch(engine.onLoot(event.getItems(), source));
 	}
@@ -209,9 +216,8 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		dominionTelemetry.onLootReceived(event);
 		LootRecordType type = event.getType();
-		// Normal NPC loot already arrives through NpcLootReceived/ServerNpcLoot.
-		// Processing LootReceived(NPC) as well can represent the same kill twice.
 		if (type != LootRecordType.EVENT && type != LootRecordType.PICKPOCKET)
 		{
 			return;
@@ -233,6 +239,7 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		dominionTelemetry.onChatMessage(event);
 		competitionTracker.onChatMessage(event);
 		List<SixthDegreeNotificationEvent> events = engine.onGameMessage(event.getMessage());
 		for (SixthDegreeNotificationEvent notification : events)
@@ -248,6 +255,7 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		dominionTelemetry.onStatChanged(event);
 		competitionTracker.onStatChanged(event);
 		for (SixthDegreeNotificationEvent notification : engine.onStatChanged(event))
 		{
@@ -262,12 +270,14 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
+		dominionTelemetry.onActorDeath(event);
 		dispatch(engine.onActorDeath(event));
 	}
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
+		dominionTelemetry.onGameStateChanged(event);
 		if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
 			engine.reset();
