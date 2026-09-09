@@ -69,6 +69,7 @@ final class SixthDegreeDominionWarMap extends Overlay
 	private volatile boolean available;
 	private volatile boolean visible;
 	private volatile boolean running;
+	private volatile boolean openRequested;
 	private volatile String selectedRegionId = "morytania";
 	private NavigationButton navigationButton;
 
@@ -113,6 +114,7 @@ final class SixthDegreeDominionWarMap extends Overlay
 		running = false;
 		visible = false;
 		available = false;
+		openRequested = false;
 		sessionToken = null;
 		state = null;
 		refreshing.set(false);
@@ -141,6 +143,7 @@ final class SixthDegreeDominionWarMap extends Overlay
 		sessionToken = null;
 		state = null;
 		visible = false;
+		openRequested = false;
 		setAvailable(false);
 	}
 
@@ -149,6 +152,7 @@ final class SixthDegreeDominionWarMap extends Overlay
 		if (gameState == GameState.LOGIN_SCREEN)
 		{
 			visible = false;
+			openRequested = false;
 		}
 		else if (gameState == GameState.LOGGED_IN && sessionToken != null)
 		{
@@ -159,6 +163,17 @@ final class SixthDegreeDominionWarMap extends Overlay
 	boolean isVisible()
 	{
 		return visible;
+	}
+
+	void openVisible()
+	{
+		openRequested = true;
+		if (available)
+		{
+			openRequested = false;
+			visible = true;
+		}
+		refreshState();
 	}
 
 	void toggleVisible()
@@ -195,7 +210,16 @@ final class SixthDegreeDominionWarMap extends Overlay
 				return;
 			}
 			state = response;
-			setAvailable(response != null && response.ok && response.available);
+			boolean nextAvailable = response != null && response.ok && response.available;
+			setAvailable(nextAvailable);
+			if (openRequested)
+			{
+				openRequested = false;
+				if (nextAvailable)
+				{
+					visible = true;
+				}
+			}
 			if (response != null && response.available)
 			{
 				selectUsefulDefault(response);
@@ -232,27 +256,6 @@ final class SixthDegreeDominionWarMap extends Overlay
 		{
 			visible = false;
 		}
-		SwingUtilities.invokeLater(() ->
-		{
-			if (!running)
-			{
-				return;
-			}
-			if (next && navigationButton == null)
-			{
-				navigationButton = NavigationButton.builder()
-					.tooltip("Dominion War Map")
-					.icon(buildMapIcon())
-					.priority(9)
-					.onClick(this::toggleVisible)
-					.build();
-				clientToolbar.addNavigation(navigationButton);
-			}
-			else if (!next)
-			{
-				removeNavigationButton();
-			}
-		});
 	}
 
 	private void removeNavigationButton()
