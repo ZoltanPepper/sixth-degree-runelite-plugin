@@ -63,6 +63,7 @@ final class SixthDegreeDominionTelemetry
 	private final ClientThread clientThread;
 	private final ItemManager itemManager;
 	private final SixthDegreeDominionApiClient apiClient;
+	private final SixthDegreeDominionHud dominionHud;
 	private final Map<Skill, Integer> xpBaselines = new EnumMap<>(Skill.class);
 	private final Map<String, PendingXp> pendingXp = new HashMap<>();
 	private final Deque<QueuedTelemetry> pending = new ArrayDeque<>();
@@ -81,12 +82,14 @@ final class SixthDegreeDominionTelemetry
 		Client client,
 		ClientThread clientThread,
 		ItemManager itemManager,
-		SixthDegreeDominionApiClient apiClient)
+		SixthDegreeDominionApiClient apiClient,
+		SixthDegreeDominionHud dominionHud)
 	{
 		this.client = client;
 		this.clientThread = clientThread;
 		this.itemManager = itemManager;
 		this.apiClient = apiClient;
+		this.dominionHud = dominionHud;
 	}
 
 	void start()
@@ -423,7 +426,7 @@ final class SixthDegreeDominionTelemetry
 			JsonObject metadata = new JsonObject();
 			metadata.addProperty("world", clientWorldSafe());
 			payload.add("metadata", metadata);
-			enqueue(new QueuedTelemetry(true, payload));
+			enqueue(new QueuedTelemetry(true, payload, xp.skill + " XP"));
 		}
 	}
 
@@ -474,7 +477,22 @@ final class SixthDegreeDominionTelemetry
 		metadata.addProperty("tick", client.getTickCount());
 		metadata.addProperty("world", clientWorldSafe());
 		payload.add("metadata", metadata);
-		enqueue(new QueuedTelemetry(false, payload));
+		enqueue(new QueuedTelemetry(false, payload, telemetryLabel(kind, source, extra)));
+	}
+
+	private static String telemetryLabel(String kind, String source, JsonObject extra)
+	{
+		String type = kind == null ? "" : kind.toUpperCase(Locale.ROOT);
+		if ("COLLECTION_LOG".equals(type) && extra != null && extra.has("item_name"))
+		{
+			try { return "Collection Log: " + extra.get("item_name").getAsString(); }
+			catch (Exception ignored) { return "Collection Log"; }
+		}
+		if ("PET".equals(type)) return "Pet drop";
+		if ("CLUE".equals(type)) return source == null || source.isBlank() ? "Clue completion" : source;
+		if ("BOSS_COUNT".equals(type)) return source == null || source.isBlank() ? "Boss completion" : source;
+		if ("DEATH".equals(type)) return "Player death";
+		return source == null || source.isBlank() ? "Dominion activity" : source;
 	}
 
 	private void enqueue(QueuedTelemetry telemetry)
@@ -518,6 +536,10 @@ final class SixthDegreeDominionTelemetry
 		{
 			boolean remove = error == null;
 			boolean retry = false;
+			if (error == null && response != null)
+			{
+				dominionHud.onTelemetryResult(next.label, response);
+			}
 			if (error != null)
 			{
 				Throwable cause = unwrap(error);
@@ -760,12 +782,14 @@ final class SixthDegreeDominionTelemetry
 	{
 		final boolean xp;
 		final JsonObject payload;
+		final String label;
 		int attempts;
 
-		QueuedTelemetry(boolean xp, JsonObject payload)
+		QueuedTelemetry(boolean xp, JsonObject payload, String label)
 		{
 			this.xp = xp;
 			this.payload = payload;
+			this.label = label;
 		}
 	}
 
