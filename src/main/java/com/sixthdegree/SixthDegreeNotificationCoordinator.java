@@ -140,6 +140,11 @@ final class SixthDegreeNotificationCoordinator
 		competitionTracker.refreshState();
 	}
 
+	void openDominionWarMap()
+	{
+		dominionWarMap.openVisible();
+	}
+
 	void refreshRules()
 	{
 		String token = sessionToken;
