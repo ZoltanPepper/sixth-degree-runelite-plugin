@@ -1,6 +1,7 @@
 package com.sixthdegree;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import java.io.IOException;
@@ -33,6 +34,14 @@ final class SixthDegreeDominionApiClient
 	{
 		Request request = authedRequest(SixthDegreeApiClient.API_BASE + "/dominion/state", sessionToken)
 			.get()
+			.build();
+		return sendJson(request, StateResponse.class);
+	}
+
+	CompletableFuture<StateResponse> getHud(String sessionToken, JsonObject location)
+	{
+		Request request = authedRequest(SixthDegreeApiClient.API_BASE + "/dominion/hud", sessionToken)
+			.post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(location)))
 			.build();
 		return sendJson(request, StateResponse.class);
 	}
@@ -130,7 +139,9 @@ final class SixthDegreeDominionApiClient
 		long server_time;
 		Season season;
 		Day day;
+		PlayerState player;
 		Team team;
+		CurrentRegion current_region;
 		@SerializedName("public")
 		PublicState publicState;
 	}
@@ -156,6 +167,52 @@ final class SixthDegreeDominionApiClient
 		long ends_at;
 		String status;
 		long resolved_at;
+	}
+
+	static final class PlayerState
+	{
+		int id;
+		String rsn;
+		Contribution contribution;
+		XpState xp;
+	}
+
+	static final class Contribution
+	{
+		long total_milli;
+		String total_influence;
+		long territory_milli;
+		String territory_influence;
+		long war_milli;
+		String war_influence;
+	}
+
+	static final class XpState
+	{
+		int xp_per_influence;
+		int used_units;
+		int remaining_units;
+		int cap_units;
+	}
+
+	static final class CurrentRegion
+	{
+		String region_id;
+		String name;
+		boolean scoreable;
+		String reason;
+		String mode;
+		String role;
+		int support_multiplier_bp;
+		Classification classification;
+	}
+
+	static final class Classification
+	{
+		String region;
+		boolean scoreable;
+		String reason;
+		String evidence;
 	}
 
 	static final class Team
@@ -262,5 +319,10 @@ final class SixthDegreeDominionApiClient
 		boolean accepted;
 		boolean active;
 		String reason;
+		Classification classification;
+		JsonObject result;
+		JsonArray milestones;
+		JsonArray derived;
+		JsonObject objectives;
 	}
 }
