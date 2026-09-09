@@ -35,6 +35,7 @@ final class SixthDegreeNotificationCoordinator
 	private final SixthDegreeRarityService rarityService;
 	private final SixthDegreeCompetitionTracker competitionTracker;
 	private final SixthDegreeDominionTelemetry dominionTelemetry;
+	private final SixthDegreeDominionWarMap dominionWarMap;
 	private final Deque<PendingNotification> pending = new ArrayDeque<>();
 	private final AtomicBoolean sending = new AtomicBoolean(false);
 	private final AtomicBoolean rulesRefreshing = new AtomicBoolean(false);
@@ -51,13 +52,15 @@ final class SixthDegreeNotificationCoordinator
 		SixthDegreeScreenshotService screenshots,
 		SixthDegreeRarityService rarityService,
 		SixthDegreeCompetitionTracker competitionTracker,
-		SixthDegreeDominionTelemetry dominionTelemetry)
+		SixthDegreeDominionTelemetry dominionTelemetry,
+		SixthDegreeDominionWarMap dominionWarMap)
 	{
 		this.engine = engine;
 		this.screenshots = screenshots;
 		this.rarityService = rarityService;
 		this.competitionTracker = competitionTracker;
 		this.dominionTelemetry = dominionTelemetry;
+		this.dominionWarMap = dominionWarMap;
 	}
 
 	void start(SixthDegreeApiClient apiClient)
@@ -65,6 +68,7 @@ final class SixthDegreeNotificationCoordinator
 		this.apiClient = apiClient;
 		competitionTracker.start();
 		dominionTelemetry.start();
+		dominionWarMap.start();
 		if (scheduler == null || scheduler.isShutdown())
 		{
 			scheduler = Executors.newSingleThreadScheduledExecutor(r ->
@@ -87,6 +91,7 @@ final class SixthDegreeNotificationCoordinator
 		deactivate();
 		competitionTracker.stop();
 		dominionTelemetry.stop();
+		dominionWarMap.stop();
 		if (scheduler != null)
 		{
 			scheduler.shutdownNow();
@@ -110,6 +115,7 @@ final class SixthDegreeNotificationCoordinator
 		active = true;
 		competitionTracker.activate(token);
 		dominionTelemetry.activate(token);
+		dominionWarMap.activate(token);
 		if (changed)
 		{
 			engine.reset();
@@ -124,6 +130,7 @@ final class SixthDegreeNotificationCoordinator
 		sessionToken = null;
 		competitionTracker.deactivate();
 		dominionTelemetry.deactivate();
+		dominionWarMap.deactivate();
 		engine.setRules(SixthDegreeNotificationRules.DISABLED);
 		engine.reset();
 	}
@@ -278,6 +285,7 @@ final class SixthDegreeNotificationCoordinator
 	public void onGameStateChanged(GameStateChanged event)
 	{
 		dominionTelemetry.onGameStateChanged(event);
+		dominionWarMap.onGameStateChanged(event.getGameState());
 		if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
 			engine.reset();
