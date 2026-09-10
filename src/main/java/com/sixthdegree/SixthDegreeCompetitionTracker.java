@@ -233,6 +233,7 @@ final class SixthDegreeCompetitionTracker
 			if (context.skill == null)
 			{
 				baselineTo(context, 0L);
+				context.baselineObservationEstablished = false;
 				return;
 			}
 			long currentXp = Math.max(0L, client.getSkillExperience(context.skill));
@@ -245,6 +246,7 @@ final class SixthDegreeCompetitionTracker
 				{
 					long serverCurrent = Math.max(0L, competition.you.current_value);
 					baselineTo(context, serverCurrent);
+					context.baselineObservationEstablished = true;
 					if (currentXp > serverCurrent)
 					{
 						context.latestValue = currentXp;
@@ -255,11 +257,25 @@ final class SixthDegreeCompetitionTracker
 					// No trusted observation (or a pause occurred while RuneLite was away):
 					// establish a fresh local baseline so lifetime/paused XP is never awarded.
 					baselineTo(context, currentXp);
+					context.baselineObservationEstablished = false;
 				}
 			}
 			else if (!context.baselineSet || wasPaused != context.paused || !context.isScorable(now))
 			{
 				baselineTo(context, currentXp);
+				if (wasPaused != context.paused || !context.isScorable(now))
+				{
+					context.baselineObservationEstablished = false;
+				}
+			}
+
+			// A zero-score absolute observation makes the current desktop value safe to
+			// reconcile from later. This is what lets mobile XP be recovered even when
+			// the player switches away before earning any desktop XP in the competition.
+			// It also establishes a new safe boundary immediately after a pause/resume.
+			if (context.isScorable(now) && !context.baselineObservationEstablished)
+			{
+				submitBaselineObservation(context, currentXp);
 			}
 		}
 		else
@@ -283,6 +299,55 @@ final class SixthDegreeCompetitionTracker
 		{
 			flushProgress(context);
 		}
+	}
+
+	private void submitBaselineObservation(CompetitionContext context, long currentValue)
+	{
+		if (!active || context.baselineObservationInFlight || !context.isScorable(nowSeconds()))
+		{
+			return;
+		}
+		String token = sessionToken;
+		if (token == null || token.isBlank())
+		{
+			return;
+		}
+
+		final int eventId = context.eventId;
+		final long observedAt = nowSeconds();
+		final long safeValue = Math.max(0L, currentValue);
+		final String telemetryId = baselineTelemetryId(context, safeValue, observedAt);
+		context.baselineObservationInFlight = true;
+		apiClient.postCompetitionProgress(
+			context.kind,
+			token,
+			eventId,
+			0L,
+			safeValue,
+			observedAt,
+			telemetryId).whenComplete((response, error) ->
+		{
+			Runnable completion = () ->
+			{
+				if (context.eventId != eventId)
+				{
+					return;
+				}
+				context.baselineObservationInFlight = false;
+				if (error == null && response != null && response.ok && !response.paused)
+				{
+					context.baselineObservationEstablished = true;
+				}
+			};
+			if (clientThread != null)
+			{
+				clientThread.invokeLater(completion);
+			}
+			else
+			{
+				completion.run();
+			}
+		});
 	}
 
 	private void playWinnerSound()
@@ -360,6 +425,10 @@ final class SixthDegreeCompetitionTracker
 		if (!sotw.baselineSet || !sotw.isScorable(now))
 		{
 			baselineTo(sotw, xp);
+			if (!sotw.isScorable(now))
+			{
+				sotw.baselineObservationEstablished = false;
+			}
 			return;
 		}
 		if (xp < sotw.latestValue)
@@ -462,6 +531,10 @@ final class SixthDegreeCompetitionTracker
 			{
 				context.needsFreshBossBaseline = true;
 			}
+			else
+			{
+				context.baselineObservationEstablished = false;
+			}
 			refreshState();
 			return;
 		}
@@ -498,6 +571,15 @@ final class SixthDegreeCompetitionTracker
 			+ ":" + context.eventId
 			+ ":" + accountDiscriminator()
 			+ ":" + target;
+	}
+
+	private String baselineTelemetryId(CompetitionContext context, long value, long observedAt)
+	{
+		return context.kind.toLowerCase(Locale.ROOT)
+			+ ":" + context.eventId
+			+ ":" + accountDiscriminator()
+			+ ":baseline:" + value
+			+ ":" + observedAt;
 	}
 
 	private String accountDiscriminator()
@@ -648,6 +730,8 @@ final class SixthDegreeCompetitionTracker
 		long ackedValue;
 		long latestValue;
 		boolean baselineSet;
+		boolean baselineObservationEstablished;
+		boolean baselineObservationInFlight;
 		boolean needsFreshBossBaseline = true;
 		boolean sending;
 		long pendingTarget = -1L;
@@ -684,6 +768,8 @@ final class SixthDegreeCompetitionTracker
 			ackedValue = 0L;
 			latestValue = 0L;
 			baselineSet = false;
+			baselineObservationEstablished = false;
+			baselineObservationInFlight = false;
 			needsFreshBossBaseline = true;
 			sending = false;
 			hadQualifyingScore = false;
