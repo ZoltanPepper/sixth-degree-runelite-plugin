@@ -92,6 +92,9 @@ public class SixthDegreePlugin extends Plugin
 	private SixthDegreeApiClient apiClient;
 
 	@Inject
+	private SixthDegreeDominionApiClient dominionApiClient;
+
+	@Inject
 	private SixthDegreeRealtimeClient realtimeClient;
 
 	private final AtomicBoolean authPollInFlight = new AtomicBoolean(false);
@@ -125,7 +128,7 @@ public class SixthDegreePlugin extends Plugin
 			return thread;
 		});
 
-		panel = new SixthDegreePanel(apiClient, notificationCoordinator::openDominionWarMap);
+		panel = new SixthDegreePanel(apiClient, dominionApiClient, notificationCoordinator::openDominionWarMap);
 		navigationButton = NavigationButton.builder()
 			.tooltip("Sixth Degree")
 			.icon(buildSixthDegreeIcon())
@@ -149,6 +152,7 @@ public class SixthDegreePlugin extends Plugin
 				{
 					panel.refreshLootLeaderboardIfVisible();
 					panel.refreshCompetitionIfVisible();
+					panel.refreshDominionIfVisible();
 				}
 			}),
 			LEADERBOARD_REFRESH_SECONDS,

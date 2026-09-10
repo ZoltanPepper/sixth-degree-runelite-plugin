@@ -175,6 +175,8 @@ final class SixthDegreeDominionApiClient
 		String rsn;
 		Contribution contribution;
 		XpState xp;
+		JsonObject gameplay;
+		JsonObject personal_order;
 	}
 
 	static final class Contribution
@@ -222,6 +224,9 @@ final class SixthDegreeDominionApiClient
 		String name;
 		AttackOrders attack_orders;
 		WarReserve war_reserve;
+		JsonObject routine_support;
+		JsonObject shared_mission;
+		JsonObject reserve_proposal;
 	}
 
 	static final class AttackOrders
