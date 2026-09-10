@@ -1,18 +1,12 @@
 package com.sixthdegree;
 
-import java.io.BufferedInputStream;
-import java.io.InputStream;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
+import javax.inject.Inject;
 import javax.inject.Singleton;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
-import javax.sound.sampled.LineEvent;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.audio.AudioPlayer;
 
 @Slf4j
 @Singleton
@@ -38,7 +32,14 @@ final class SixthDegreeSoundService
 		}
 	}
 
+	private final AudioPlayer audioPlayer;
 	private ExecutorService executor;
+
+	@Inject
+	SixthDegreeSoundService(AudioPlayer audioPlayer)
+	{
+		this.audioPlayer = audioPlayer;
+	}
 
 	synchronized void start()
 	{
@@ -89,43 +90,11 @@ final class SixthDegreeSoundService
 		return "/com/sixthdegree/sounds/" + cue.fileName;
 	}
 
-	private static void playNow(Cue cue)
+	private void playNow(Cue cue)
 	{
-		try (InputStream resource = SixthDegreeSoundService.class.getResourceAsStream(resourcePath(cue)))
+		try
 		{
-			if (resource == null)
-			{
-				log.warn("Missing Sixth Degree sound resource {}", resourcePath(cue));
-				return;
-			}
-			try (BufferedInputStream buffered = new BufferedInputStream(resource);
-				 AudioInputStream audio = AudioSystem.getAudioInputStream(buffered))
-			{
-				Clip clip = AudioSystem.getClip();
-				CountDownLatch finished = new CountDownLatch(1);
-				try
-				{
-					clip.addLineListener(event ->
-					{
-						if (event.getType() == LineEvent.Type.STOP)
-						{
-							finished.countDown();
-						}
-					});
-					clip.open(audio);
-					clip.start();
-					long timeoutMillis = Math.max(1_000L, clip.getMicrosecondLength() / 1_000L + 1_000L);
-					finished.await(timeoutMillis, TimeUnit.MILLISECONDS);
-				}
-				finally
-				{
-					clip.close();
-				}
-			}
-		}
-		catch (InterruptedException interrupted)
-		{
-			Thread.currentThread().interrupt();
+			audioPlayer.play(SixthDegreeSoundService.class, resourcePath(cue), 0.0f);
 		}
 		catch (Exception error)
 		{
