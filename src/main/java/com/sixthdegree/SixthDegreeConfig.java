@@ -19,10 +19,20 @@ public interface SixthDegreeConfig extends Config
 
 	@ConfigItem(
 		keyName = "notificationSound",
-		name = "Notification sound",
-		description = "Play RuneLite notification sounds for Sixth Degree alerts"
+		name = "Notification sounds",
+		description = "Play Sixth Degree sounds for supported alerts"
 	)
 	default boolean notificationSound()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "deathScreenshots",
+		name = "Death screenshots",
+		description = "Include a RuneLite screenshot with your Discord death notification"
+	)
+	default boolean deathScreenshots()
 	{
 		return true;
 	}

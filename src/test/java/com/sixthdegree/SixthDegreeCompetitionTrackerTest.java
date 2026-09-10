@@ -1,6 +1,7 @@
 package com.sixthdegree;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.concurrent.CompletableFuture;
 import net.runelite.api.Client;
 import net.runelite.api.events.ChatMessage;
@@ -11,6 +12,39 @@ import static org.mockito.Mockito.*;
 
 public class SixthDegreeCompetitionTrackerTest
 {
+	private static void applyState(
+		SixthDegreeCompetitionTracker tracker,
+		SixthDegreeApiClient.CompetitionResponse response) throws Exception
+	{
+		Field contextField = tracker.getClass().getDeclaredField("botw");
+		contextField.setAccessible(true);
+		Method method = tracker.getClass().getDeclaredMethod(
+			"applyState",
+			contextField.getType(),
+			String.class,
+			SixthDegreeApiClient.CompetitionResponse.class,
+			Throwable.class);
+		method.setAccessible(true);
+		method.invoke(tracker, contextField.get(tracker), "test-token", response, null);
+	}
+
+	private static SixthDegreeApiClient.CompetitionResponse competition(long score)
+	{
+		SixthDegreeApiClient.Standing standing = new SixthDegreeApiClient.Standing();
+		standing.rsn = "Winner";
+		standing.score = score;
+		SixthDegreeApiClient.Competition active = new SixthDegreeApiClient.Competition();
+		active.event_id = 7;
+		active.metric = "Vorkath";
+		active.status = "ACTIVE";
+		active.end_time = Long.MAX_VALUE;
+		active.standings = new SixthDegreeApiClient.Standing[]{standing};
+		SixthDegreeApiClient.CompetitionResponse response = new SixthDegreeApiClient.CompetitionResponse();
+		response.ok = true;
+		response.active = active;
+		return response;
+	}
+
     @Test
     public void parsesRiftsAndPreservesBossCounts()
     {
@@ -69,4 +103,43 @@ public class SixthDegreeCompetitionTrackerTest
         tracker.onChatMessage(message);
         verify(api).postCompetitionProgress(eq("BOTW"), eq("test-token"), eq(7), eq(3L), eq(1630L), anyLong(), anyString());
     }
+
+	@Test
+	public void winnerSoundOnlyPlaysWhenAScoredEventCloses() throws Exception
+	{
+		SixthDegreeSoundService sounds = mock(SixthDegreeSoundService.class);
+		SixthDegreeConfig config = mock(SixthDegreeConfig.class);
+		when(config.notificationSound()).thenReturn(true);
+		SixthDegreeCompetitionTracker tracker = new SixthDegreeCompetitionTracker(
+			mock(Client.class), null, mock(SixthDegreeApiClient.class), sounds, config);
+		set(tracker, "active", true);
+		set(tracker, "sessionToken", "test-token");
+
+		applyState(tracker, competition(12L));
+		applyState(tracker, competition(18L));
+		verify(sounds, never()).play(SixthDegreeSoundService.Cue.WINNER);
+
+		SixthDegreeApiClient.CompetitionResponse closed = new SixthDegreeApiClient.CompetitionResponse();
+		closed.ok = true;
+		applyState(tracker, closed);
+		verify(sounds).play(SixthDegreeSoundService.Cue.WINNER);
+	}
+
+	@Test
+	public void zeroScoreEventDoesNotHaveAWinner() throws Exception
+	{
+		SixthDegreeSoundService sounds = mock(SixthDegreeSoundService.class);
+		SixthDegreeConfig config = mock(SixthDegreeConfig.class);
+		when(config.notificationSound()).thenReturn(true);
+		SixthDegreeCompetitionTracker tracker = new SixthDegreeCompetitionTracker(
+			mock(Client.class), null, mock(SixthDegreeApiClient.class), sounds, config);
+		set(tracker, "active", true);
+		set(tracker, "sessionToken", "test-token");
+
+		applyState(tracker, competition(0L));
+		SixthDegreeApiClient.CompetitionResponse closed = new SixthDegreeApiClient.CompetitionResponse();
+		closed.ok = true;
+		applyState(tracker, closed);
+		verify(sounds, never()).play(SixthDegreeSoundService.Cue.WINNER);
+	}
 }

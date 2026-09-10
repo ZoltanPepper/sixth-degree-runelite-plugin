@@ -188,7 +188,7 @@ final class SixthDegreeApiClient
 		return new Request.Builder()
 			.url(url)
 			.header("Accept", "application/json")
-			.header("User-Agent", "Sixth-Degree-RuneLite/0.1.3")
+			.header("User-Agent", "Sixth-Degree-RuneLite/0.1.4")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite");
 	}
 
@@ -399,6 +399,7 @@ final class SixthDegreeApiClient
 		String status;
 		boolean paused;
 		boolean live;
+		boolean reconcile_allowed;
 		Standing[] standings;
 		Standing you;
 	}

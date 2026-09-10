@@ -20,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -61,6 +62,7 @@ public class SixthDegreePanel extends PluginPanel
 	private enum LootPeriod { DAILY, WEEKLY, MONTHLY }
 
 	private final SixthDegreeApiClient apiClient;
+	private final Consumer<String> gameMessageSink;
 	private final JPanel header = new JPanel();
 	private final JPanel primaryNav = new JPanel(new GridLayout(1, 3, 7, 0));
 	private final JPanel secondaryNav = new JPanel(new GridLayout(1, 3, 6, 0));
@@ -75,6 +77,7 @@ public class SixthDegreePanel extends PluginPanel
 	private int currentWorld;
 	private boolean personalNotifications;
 	private boolean personalSound;
+	private boolean personalDeathScreenshots;
 	private PrimaryPage primaryPage;
 	private HomePage homePage = HomePage.LEADERBOARD;
 	private EventPage eventPage = EventPage.EVENT_HOME;
@@ -84,8 +87,14 @@ public class SixthDegreePanel extends PluginPanel
 
 	public SixthDegreePanel(SixthDegreeApiClient apiClient)
 	{
+		this(apiClient, ignored -> { });
+	}
+
+	SixthDegreePanel(SixthDegreeApiClient apiClient, Consumer<String> gameMessageSink)
+	{
 		super(false);
 		this.apiClient = apiClient;
+		this.gameMessageSink = gameMessageSink;
 		setLayout(new BorderLayout());
 
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
@@ -175,7 +184,13 @@ public class SixthDegreePanel extends PluginPanel
 		);
 	}
 
-	public void showMemberHome(String rsn, String token, int world, boolean notifications, boolean sound)
+	public void showMemberHome(
+		String rsn,
+		String token,
+		int world,
+		boolean notifications,
+		boolean sound,
+		boolean deathScreenshots)
 	{
 		boolean same = memberRsn != null && memberRsn.equalsIgnoreCase(rsn)
 			&& sessionToken != null && sessionToken.equals(token) && primaryPage != null;
@@ -184,6 +199,7 @@ public class SixthDegreePanel extends PluginPanel
 		currentWorld = world;
 		personalNotifications = notifications;
 		personalSound = sound;
+		personalDeathScreenshots = deathScreenshots;
 		primaryNav.setVisible(true);
 		if (!same)
 		{
@@ -442,6 +458,7 @@ public class SixthDegreePanel extends PluginPanel
 		addCardTitle(local, "YOUR CLIENT");
 		addCardText(local, "Notifications: <b>" + (personalNotifications ? "On" : "Off") + "</b>");
 		addCardText(local, "Sound: <b>" + (personalSound ? "On" : "Off") + "</b>");
+		addCardText(local, "Death screenshots: <b>" + (personalDeathScreenshots ? "On" : "Off") + "</b>");
 		addCard(local);
 		finishContent();
 	}
@@ -677,14 +694,18 @@ public class SixthDegreePanel extends PluginPanel
 			}
 			String note = descriptionText.isEmpty() ? activityText : activityText + " — " + descriptionText;
 			if (note.length() > 100) note = note.substring(0, 100);
+			final String postedNote = note;
+			final int postedWorld = currentWorld;
 			post.setEnabled(false);
-			apiClient.postLfg(sessionToken, note, currentWorld).whenComplete((posted, postError) ->
+			apiClient.postLfg(sessionToken, postedNote, postedWorld).whenComplete((posted, postError) ->
 			{
 				if (postError != null)
 				{
 					SwingUtilities.invokeLater(() -> renderLfg(data, null, errorText(postError)));
 					return;
 				}
+				gameMessageSink.accept(
+					"LFG posted • " + postedNote + (postedWorld > 0 ? " (W" + postedWorld + ")" : ""));
 				apiClient.getLfg(sessionToken).whenComplete((fresh, freshError) ->
 					SwingUtilities.invokeLater(() -> renderLfg(fresh, freshError, "LFG posted ✓")));
 			});
