@@ -10,12 +10,13 @@ on:
       - "src/main/java/com/sixthdegree/SixthDegreePanel.java"
       - "src/main/java/com/sixthdegree/SixthDegreePlugin.java"
       - "src/test/java/com/sixthdegree/SixthDegreeDominion*.java"
+      - "scripts/apply_dominion_dashboard.py"
       - "build.gradle"
       - ".github/workflows/dominion-draft.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -24,6 +25,8 @@ jobs:
     steps:
       - name: Checkout draft branch
         uses: actions/checkout@v4
+        with:
+          ref: draft/dominion-v1
 
       - name: Set up Java 11
         uses: actions/setup-java@v4
@@ -36,8 +39,23 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Apply Dominion dashboard source patch
+        run: python3 scripts/apply_dominion_dashboard.py
+
       - name: Compile, test and build development bundle
         run: gradle clean test devBundle
+
+      - name: Commit verified dashboard source
+        run: |
+          if git diff --quiet -- src/main/java/com/sixthdegree/SixthDegreePanel.java src/main/java/com/sixthdegree/SixthDegreePlugin.java src/main/java/com/sixthdegree/SixthDegreeDominionApiClient.java; then
+            echo "No dashboard source changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main/java/com/sixthdegree/SixthDegreePanel.java src/main/java/com/sixthdegree/SixthDegreePlugin.java src/main/java/com/sixthdegree/SixthDegreeDominionApiClient.java
+          git commit -m "Build Dominion swords dashboard [skip ci]"
+          git push origin HEAD:draft/dominion-v1
 
       - name: Upload Dominion development bundle
         uses: actions/upload-artifact@v4
