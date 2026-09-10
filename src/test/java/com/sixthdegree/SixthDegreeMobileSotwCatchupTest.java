@@ -11,7 +11,6 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -80,14 +79,19 @@ public class SixthDegreeMobileSotwCatchupTest
 		return response;
 	}
 
+	private static void stubProgress(SixthDegreeApiClient api)
+	{
+		when(api.postCompetitionProgress(anyString(), anyString(), eq(8), anyLong(), anyLong(), anyLong(), anyString()))
+			.thenReturn(new CompletableFuture<>());
+	}
+
 	@Test
 	public void restoresServerXpAndImmediatelyBackfillsMobileXp() throws Exception
 	{
 		Client client = mock(Client.class);
 		when(client.getSkillExperience(Skill.MINING)).thenReturn(1_010_100);
 		SixthDegreeApiClient api = mock(SixthDegreeApiClient.class);
-		when(api.postCompetitionProgress(anyString(), anyString(), eq(8), anyLong(), anyLong(), anyLong(), anyString()))
-			.thenReturn(new CompletableFuture<>());
+		stubProgress(api);
 		SixthDegreeCompetitionTracker tracker = new SixthDegreeCompetitionTracker(client, null, api);
 		set(tracker, "active", true);
 		set(tracker, "sessionToken", "test-token");
@@ -99,34 +103,36 @@ public class SixthDegreeMobileSotwCatchupTest
 	}
 
 	@Test
-	public void firstObservationNeverAwardsLifetimeXp() throws Exception
+	public void firstObservationStoresBaselineWithoutAwardingLifetimeXp() throws Exception
 	{
 		Client client = mock(Client.class);
 		when(client.getSkillExperience(Skill.MINING)).thenReturn(25_000_000);
 		SixthDegreeApiClient api = mock(SixthDegreeApiClient.class);
+		stubProgress(api);
 		SixthDegreeCompetitionTracker tracker = new SixthDegreeCompetitionTracker(client, null, api);
 		set(tracker, "active", true);
 		set(tracker, "sessionToken", "test-token");
 
 		applyState(tracker, sotwContext(tracker), sotwState(0L, false, false));
 
-		verify(api, never()).postCompetitionProgress(
-			anyString(), anyString(), eq(8), anyLong(), anyLong(), anyLong(), anyString());
+		verify(api).postCompetitionProgress(
+			eq("SOTW"), eq("test-token"), eq(8), eq(0L), eq(25_000_000L), anyLong(), anyString());
 	}
 
 	@Test
-	public void freshSessionDoesNotBackfillAcrossHistoricalPause() throws Exception
+	public void historicalPauseStartsFreshBaselineWithoutBackfillingPausedXp() throws Exception
 	{
 		Client client = mock(Client.class);
 		when(client.getSkillExperience(Skill.MINING)).thenReturn(1_010_100);
 		SixthDegreeApiClient api = mock(SixthDegreeApiClient.class);
+		stubProgress(api);
 		SixthDegreeCompetitionTracker tracker = new SixthDegreeCompetitionTracker(client, null, api);
 		set(tracker, "active", true);
 		set(tracker, "sessionToken", "test-token");
 
 		applyState(tracker, sotwContext(tracker), sotwState(1_000_100L, false, true));
 
-		verify(api, never()).postCompetitionProgress(
-			anyString(), anyString(), eq(8), anyLong(), anyLong(), anyLong(), anyString());
+		verify(api).postCompetitionProgress(
+			eq("SOTW"), eq("test-token"), eq(8), eq(0L), eq(1_010_100L), anyLong(), anyString());
 	}
 }
