@@ -366,14 +366,23 @@ public class SixthDegreePlugin extends Plugin
 		{
 			return;
 		}
+		boolean preserveMemberPanel = sessionValid && sameRsn(rsn, validatedRsn);
 		sessionValidationInFlight = true;
-		panel.showCheckingAccess(rsn);
+		if (!preserveMemberPanel)
+		{
+			panel.showCheckingAccess(rsn);
+		}
 
 		apiClient.getMemberStatus(token).whenComplete((status, throwable) ->
-			clientThread.invokeLater(() -> handleSessionValidation(rsn, status, throwable)));
+			clientThread.invokeLater(() ->
+				handleSessionValidation(rsn, status, throwable, preserveMemberPanel)));
 	}
 
-	private void handleSessionValidation(String rsn, SixthDegreeApiClient.MemberStatus status, Throwable throwable)
+	private void handleSessionValidation(
+		String rsn,
+		SixthDegreeApiClient.MemberStatus status,
+		Throwable throwable,
+		boolean preserveMemberPanel)
 	{
 		sessionValidationInFlight = false;
 		if (!isStillCurrentClanAccount(rsn))
@@ -400,7 +409,10 @@ public class SixthDegreePlugin extends Plugin
 				}
 			}
 
-			panel.showConnectionError(rsn, () -> clientThread.invokeLater(this::refreshAccessState));
+			if (!preserveMemberPanel)
+			{
+				panel.showConnectionError(rsn, () -> clientThread.invokeLater(this::refreshAccessState));
+			}
 			return;
 		}
 
