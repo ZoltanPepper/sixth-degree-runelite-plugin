@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -18,6 +19,8 @@ import net.runelite.api.ItemComposition;
 import net.runelite.api.Skill;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.util.Text;
@@ -26,6 +29,13 @@ import net.runelite.client.util.Text;
 final class SixthDegreeNotificationEngine
 {
 	private static final String COLLECTION_LOG_PREFIX = "New item added to your collection log:";
+	private static final Pattern QUEST_PATTERN_1 = Pattern.compile(".+?ve\\.*? (?<verb>been|rebuilt|.+?ed)? ?(?:the )?'?(?<quest>.+?)'?(?: [Qq]uest)?[!.]?$");
+	private static final Pattern QUEST_PATTERN_2 = Pattern.compile("'?(?<quest>.+?)'?(?: [Qq]uest)? (?<verb>[a-z]\\w+?ed)?(?: f.*?)?[!.]?$");
+	private static final Set<String> RFD_TAGS = Set.of("Another Cook", "freed", "defeated", "saved");
+	private static final Set<String> WORD_QUEST_IN_NAME_TAGS = Set.of("Another Cook", "Doric", "Heroes", "Legends", "Observatory", "Olaf", "Waterfall");
+	private static final Map<String, String> QUEST_REPLACEMENTS = Map.of(
+		"Lumbridge Cook... again", "Another Cook's",
+		"Skrach 'Bone Crusher' Uglogwee", "Skrach Uglogwee");
 	private static final Pattern BOSS_COUNT = Pattern.compile(
 		"Your (.+?)\\s(?:kill|chest|completion|harvest|success|opened)\\s?count is: ?([\\d,]+)\\b",
 		Pattern.CASE_INSENSITIVE);
@@ -49,6 +59,7 @@ final class SixthDegreeNotificationEngine
 	private String lastBoss;
 	private int lastBossCount;
 	private int lastBossTick = -1000;
+	private int lastTotalLevel;
 
 	@Inject
 	SixthDegreeNotificationEngine(
@@ -69,6 +80,44 @@ final class SixthDegreeNotificationEngine
 	SixthDegreeNotificationRules getRules()
 	{
 		return rules;
+	}
+
+	void initializeStats()
+	{
+		levels.clear();
+		experience.clear();
+		for (Skill skill : Skill.values())
+		{
+			levels.put(skill, Math.max(1, client.getRealSkillLevel(skill)));
+			experience.put(skill, Math.max(0, client.getSkillExperience(skill)));
+		}
+		lastTotalLevel = Math.max(0, client.getTotalLevel());
+	}
+
+	SixthDegreeNotificationEvent onQuestCompleted()
+	{
+		SixthDegreeNotificationRules current = rules;
+		if (!current.engineLive || !current.quests.enabled)
+		{
+			return null;
+		}
+		Widget questWidget = client.getWidget(InterfaceID.Questscroll.QUEST_TITLE);
+		if (questWidget == null)
+		{
+			return null;
+		}
+		String quest = parseQuestWidget(Text.removeTags(questWidget.getText()).trim());
+		if (quest == null || quest.isBlank())
+		{
+			return null;
+		}
+		return SixthDegreeNotificationEvent.of(
+			"quest",
+			quest,
+			"Quest completed.",
+			"Quest",
+			0L,
+			current.quests.screenshots);
 	}
 
 	SixthDegreeNotificationEvent onActorDeath(ActorDeath event)
@@ -97,6 +146,7 @@ final class SixthDegreeNotificationEngine
 		lastBoss = null;
 		lastBossCount = 0;
 		lastBossTick = -1000;
+		lastTotalLevel = 0;
 	}
 
 	SixthDegreeNotificationEvent onLoot(Collection<ItemStack> items, String source)
@@ -250,6 +300,12 @@ final class SixthDegreeNotificationEngine
 		int xp = event.getXp();
 		Integer previousLevel = levels.put(skill, level);
 		Integer previousXp = experience.put(skill, xp);
+		int previousTotalLevel = lastTotalLevel;
+		int totalLevel = Math.max(0, client.getTotalLevel());
+		if (totalLevel > 0)
+		{
+			lastTotalLevel = totalLevel;
+		}
 
 		SixthDegreeNotificationRules current = rules;
 		if (!current.engineLive || !current.milestones.enabled || previousLevel == null || previousXp == null)
@@ -264,10 +320,21 @@ final class SixthDegreeNotificationEngine
 
 		if (level > previousLevel && shouldNotifyLevel(previousLevel, level, current.milestones))
 		{
+			boolean totalMilestone = totalLevel > previousTotalLevel && totalLevel > 0 && totalLevel % 100 == 0;
+			String title = skill.getName() + " level " + level;
+			if (totalMilestone)
+			{
+				title += " • " + formatNumber(totalLevel) + " total";
+			}
+			String detail = "Reached level " + level + " " + skill.getName() + ".";
+			if (totalLevel > 0)
+			{
+				detail += " Total level: " + formatNumber(totalLevel) + ".";
+			}
 			events.add(SixthDegreeNotificationEvent.of(
 				"milestone",
-				skill.getName() + " level " + level,
-				"Reached level " + level + " " + skill.getName() + ".",
+				title,
+				detail,
 				skill.getName(),
 				0L,
 				current.milestones.screenshots && level >= current.milestones.screenshotMinimumLevel));
@@ -370,6 +437,53 @@ final class SixthDegreeNotificationEngine
 	{
 		return (lower.contains("funny feeling") && lower.contains("followed"))
 			|| lower.contains("weird sneaking into your backpack");
+	}
+
+	private static String parseQuestWidget(String text)
+	{
+		if (text == null || text.isBlank())
+		{
+			return null;
+		}
+		Matcher matcher = QUEST_PATTERN_1.matcher(text);
+		if (!matcher.matches())
+		{
+			matcher = QUEST_PATTERN_2.matcher(text);
+			if (!matcher.matches())
+			{
+				return null;
+			}
+		}
+		String quest = matcher.group("quest");
+		quest = QUEST_REPLACEMENTS.getOrDefault(quest, quest);
+		String verb = matcher.group("verb");
+		verb = verb == null ? "" : verb;
+		if (verb.contains("kind of"))
+		{
+			return null;
+		}
+		if (verb.contains("completely"))
+		{
+			quest += " II";
+		}
+		String combined = quest + verb;
+		for (String tag : RFD_TAGS)
+		{
+			if (combined.contains(tag))
+			{
+				quest = "Recipe for Disaster - " + quest;
+				break;
+			}
+		}
+		for (String tag : WORD_QUEST_IN_NAME_TAGS)
+		{
+			if (quest.contains(tag))
+			{
+				quest += " Quest";
+				break;
+			}
+		}
+		return quest.trim();
 	}
 
 	private BossCount parseBossCount(String message)
