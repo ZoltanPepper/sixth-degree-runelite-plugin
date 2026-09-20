@@ -116,6 +116,7 @@ final class SixthDegreeNotificationCoordinator
 		if (changed)
 		{
 			engine.reset();
+			engine.initializeStats();
 			refreshRules();
 			flush();
 		}
@@ -282,8 +283,7 @@ final class SixthDegreeNotificationCoordinator
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		if (!active || event == null || event.getGroupId() != InterfaceID.QUESTSCROLL
-			|| !config.notificationSound())
+		if (!active || event == null || event.getGroupId() != InterfaceID.QUESTSCROLL)
 		{
 			return;
 		}
@@ -293,7 +293,11 @@ final class SixthDegreeNotificationCoordinator
 			return;
 		}
 		lastQuestSoundAt = now;
-		sounds.play(SixthDegreeSoundService.Cue.QUEST);
+		if (config.notificationSound())
+		{
+			sounds.play(SixthDegreeSoundService.Cue.QUEST);
+		}
+		dispatch(engine.onQuestCompleted());
 	}
 
 	@Subscribe
