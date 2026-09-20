@@ -12,6 +12,7 @@ final class SixthDegreeNotificationRules
 	final BasicRule pets;
 	final BasicRule collectionLogs;
 	final BasicRule deaths;
+	final BasicRule quests;
 	final MilestoneRule milestones;
 	final BossRule bossPbs;
 
@@ -21,6 +22,7 @@ final class SixthDegreeNotificationRules
 		BasicRule pets,
 		BasicRule collectionLogs,
 		BasicRule deaths,
+		BasicRule quests,
 		MilestoneRule milestones,
 		BossRule bossPbs)
 	{
@@ -29,6 +31,7 @@ final class SixthDegreeNotificationRules
 		this.pets = pets;
 		this.collectionLogs = collectionLogs;
 		this.deaths = deaths;
+		this.quests = quests;
 		this.milestones = milestones;
 		this.bossPbs = bossPbs;
 	}
@@ -40,6 +43,7 @@ final class SixthDegreeNotificationRules
 		JsonObject pets = object(root, "pets");
 		JsonObject clogs = object(root, "collection_logs");
 		JsonObject deaths = object(root, "deaths");
+		JsonObject quests = object(root, "quests");
 		JsonObject milestones = object(root, "milestones");
 		JsonObject boss = object(root, "boss_pbs");
 
@@ -55,6 +59,7 @@ final class SixthDegreeNotificationRules
 			new BasicRule(bool(pets, "enabled", true), bool(pets, "screenshots", true)),
 			new BasicRule(bool(clogs, "enabled", true), bool(clogs, "screenshots", true)),
 			new BasicRule(bool(deaths, "enabled", true), bool(deaths, "screenshots", true)),
+			new BasicRule(bool(quests, "enabled", true), bool(quests, "screenshots", true)),
 			new MilestoneRule(
 				bool(milestones, "enabled", true),
 				bool(milestones, "screenshots", true),
