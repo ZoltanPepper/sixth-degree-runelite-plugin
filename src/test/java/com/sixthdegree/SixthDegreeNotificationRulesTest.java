@@ -1,10 +1,15 @@
 package com.sixthdegree;
 
 import com.google.gson.JsonObject;
+import java.util.List;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.Player;
+import net.runelite.api.Skill;
 import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.StatChanged;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.game.ItemManager;
 import org.junit.Test;
 
@@ -13,6 +18,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +36,8 @@ public class SixthDegreeNotificationRulesTest
 		assertTrue(rules.bossPbs.notifyPersonalBests);
 		assertTrue(rules.deaths.enabled);
 		assertTrue(rules.deaths.screenshots);
+		assertTrue(rules.quests.enabled);
+		assertTrue(rules.quests.screenshots);
 	}
 
 	@Test
@@ -75,6 +83,63 @@ public class SixthDegreeNotificationRulesTest
 		assertFalse(rules.bossPbs.notifyPersonalBests);
 		assertFalse(rules.deaths.enabled);
 		assertFalse(rules.deaths.screenshots);
+	}
+
+	@Test
+	public void questCompletionCreatesScreenshotNotification()
+	{
+		Client client = mock(Client.class);
+		Widget questWidget = mock(Widget.class);
+		when(client.getWidget(InterfaceID.Questscroll.QUEST_TITLE)).thenReturn(questWidget);
+		when(questWidget.getText()).thenReturn("You have completed Cook's Assistant!");
+
+		SixthDegreeNotificationEngine engine = new SixthDegreeNotificationEngine(
+			client, mock(ItemManager.class), mock(SixthDegreeRarityService.class));
+		JsonObject enabled = new JsonObject();
+		enabled.addProperty("engine_live", true);
+		engine.setRules(SixthDegreeNotificationRules.from(enabled));
+
+		SixthDegreeNotificationEvent notification = engine.onQuestCompleted();
+		assertNotNull(notification);
+		assertEquals("quest", notification.type);
+		assertEquals("Cook's Assistant", notification.title);
+		assertTrue(notification.screenshot);
+	}
+
+	@Test
+	public void preloadedStatsDoNotLoseFirstSkillLevelUp()
+	{
+		Client client = mock(Client.class);
+		when(client.getRealSkillLevel(any(Skill.class))).thenReturn(1);
+		when(client.getSkillExperience(any(Skill.class))).thenReturn(0);
+		when(client.getRealSkillLevel(Skill.FARMING)).thenReturn(84);
+		when(client.getSkillExperience(Skill.FARMING)).thenReturn(3_000_000);
+		when(client.getTotalLevel()).thenReturn(1_999, 2_000);
+
+		SixthDegreeNotificationEngine engine = new SixthDegreeNotificationEngine(
+			client, mock(ItemManager.class), mock(SixthDegreeRarityService.class));
+		JsonObject enabled = new JsonObject();
+		enabled.addProperty("engine_live", true);
+		JsonObject milestones = new JsonObject();
+		milestones.addProperty("minimum_level", 85);
+		milestones.addProperty("level_interval", 5);
+		milestones.addProperty("screenshot_minimum_level", 85);
+		enabled.add("milestones", milestones);
+		engine.setRules(SixthDegreeNotificationRules.from(enabled));
+		engine.initializeStats();
+
+		StatChanged levelUp = mock(StatChanged.class);
+		when(levelUp.getSkill()).thenReturn(Skill.FARMING);
+		when(levelUp.getLevel()).thenReturn(85);
+		when(levelUp.getXp()).thenReturn(3_300_000);
+
+		List<SixthDegreeNotificationEvent> notifications = engine.onStatChanged(levelUp);
+		assertEquals(1, notifications.size());
+		SixthDegreeNotificationEvent notification = notifications.get(0);
+		assertEquals("milestone", notification.type);
+		assertTrue(notification.title.contains("2,000 total"));
+		assertTrue(notification.detail.contains("Total level: 2,000"));
+		assertTrue(notification.screenshot);
 	}
 
 	@Test
