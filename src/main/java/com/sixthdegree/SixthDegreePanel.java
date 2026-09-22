@@ -444,15 +444,24 @@ public class SixthDegreePanel extends PluginPanel
 		addCentered("Clan alert rules are locked centrally.<br>Members only control local sound and notifications.", MUTED);
 		addGap(10);
 		JsonObject rules = data.rules == null ? new JsonObject() : data.rules;
-		addRule("VALUABLE LOOT", nested(rules, "loot"), true);
+		JPanel engine = card();
+		addCardTitle(engine, "NOTIFICATION ENGINE");
+		addCardText(engine, bool(rules, "engine_live", false) ? "Clan notifications: <b>Active ✓</b>" : "Clan notifications: <b>Paused</b>");
+		addCard(engine);
 		addGap(6);
-		addRule("PETS", nested(rules, "pets"), false);
+		addLootRule(nested(rules, "loot"));
 		addGap(6);
-		addRule("COLLECTION LOGS", nested(rules, "collection_logs"), false);
+		addBasicRule("PETS", nested(rules, "pets"));
 		addGap(6);
-		addRule("MILESTONES", nested(rules, "milestones"), false);
+		addBasicRule("COLLECTION LOGS", nested(rules, "collection_logs"));
 		addGap(6);
-		addRule("BOSS PBS", nested(rules, "boss_pbs"), false);
+		addBasicRule("DEATHS", nested(rules, "deaths"));
+		addGap(6);
+		addBasicRule("QUESTS", nested(rules, "quests"));
+		addGap(6);
+		addMilestoneRule(nested(rules, "milestones"));
+		addGap(6);
+		addBossRule(nested(rules, "boss_pbs"));
 		addGap(10);
 		JPanel local = card();
 		addCardTitle(local, "YOUR CLIENT");
@@ -754,17 +763,58 @@ public class SixthDegreePanel extends PluginPanel
 		finishContent();
 	}
 
-	private void addRule(String title, JsonObject rule, boolean threshold)
+	private void addBasicRule(String title, JsonObject rule)
 	{
 		JPanel panel = card();
 		addCardTitle(panel, title);
 		addCardText(panel, bool(rule, "enabled", false) ? "Enabled ✓" : "Disabled");
-		if (threshold && rule != null && rule.has("minimum_value"))
-		{
-			try { addCardText(panel, "Minimum: <b>" + NUMBER.format(rule.get("minimum_value").getAsLong()) + " gp</b>"); }
-			catch (Exception ignored) { }
-		}
-		if (bool(rule, "screenshots", false)) addCardText(panel, "Screenshots ✓");
+		addCardText(panel, "Screenshots: <b>" + (bool(rule, "screenshots", false) ? "On" : "Off") + "</b>");
+		addCard(panel);
+	}
+
+	private void addLootRule(JsonObject rule)
+	{
+		JPanel panel = card();
+		addCardTitle(panel, "VALUABLE / RARE LOOT");
+		addCardText(panel, bool(rule, "enabled", false) ? "Enabled ✓" : "Disabled");
+		long minimum = longValue(rule, "minimum_value", 0L);
+		long screenshotMinimum = longValue(rule, "screenshot_minimum_value", minimum);
+		int rarity = intValue(rule, "rarity_override", 0);
+		addCardText(panel, "Post at: <b>" + NUMBER.format(minimum) + " gp</b>");
+		addCardText(panel, "Screenshots: <b>" + (bool(rule, "screenshots", false) ? "On" : "Off") + "</b>"
+			+ (bool(rule, "screenshots", false) ? " from <b>" + NUMBER.format(screenshotMinimum) + " gp</b>" : ""));
+		addCardText(panel, rarity > 0 ? "Rarity override: <b>1 in " + NUMBER.format(rarity) + "</b>" : "Rarity override: <b>Off</b>");
+		addCard(panel);
+	}
+
+	private void addMilestoneRule(JsonObject rule)
+	{
+		JPanel panel = card();
+		addCardTitle(panel, "LEVEL / XP MILESTONES");
+		addCardText(panel, bool(rule, "enabled", false) ? "Enabled ✓" : "Disabled");
+		int minimum = intValue(rule, "minimum_level", 99);
+		int interval = intValue(rule, "level_interval", 1);
+		int override = intValue(rule, "level_interval_override", 0);
+		int screenshotMinimum = intValue(rule, "screenshot_minimum_level", 99);
+		int xpMillions = intValue(rule, "xp_interval_millions", 0);
+		addCardText(panel, "Skill levels: <b>" + minimum + "+</b> • every <b>" + interval + "</b>");
+		if (override > 0) addCardText(panel, "Every level from: <b>" + override + "</b>");
+		addCardText(panel, "Screenshots: <b>" + (bool(rule, "screenshots", false) ? "On" : "Off") + "</b>"
+			+ (bool(rule, "screenshots", false) ? " from level <b>" + screenshotMinimum + "</b>" : ""));
+		addCardText(panel, xpMillions > 0 ? "Post-99 XP: every <b>" + xpMillions + "m</b>" : "Post-99 XP: <b>Off</b>");
+		addCard(panel);
+	}
+
+	private void addBossRule(JsonObject rule)
+	{
+		JPanel panel = card();
+		addCardTitle(panel, "BOSS KC / PERSONAL BESTS");
+		addCardText(panel, bool(rule, "enabled", false) ? "Enabled ✓" : "Disabled");
+		addCardText(panel, "Personal bests: <b>" + (bool(rule, "notify_personal_bests", true) ? "On" : "Off") + "</b>");
+		int interval = intValue(rule, "kill_count_interval", 0);
+		addCardText(panel, interval > 0 ? "KC milestones: every <b>" + NUMBER.format(interval) + "</b>" : "KC milestones: <b>Off</b>");
+		addCardText(panel, "First KC: <b>" + (bool(rule, "notify_initial", false) ? "On" : "Off") + "</b>");
+		addCardText(panel, "Screenshots: <b>" + (bool(rule, "screenshots", false) ? "On" : "Off") + "</b>");
 		addCard(panel);
 	}
 
@@ -1103,6 +1153,18 @@ public class SixthDegreePanel extends PluginPanel
 	private static boolean bool(JsonObject object, String key, boolean fallback)
 	{
 		try { return object != null && object.has(key) ? object.get(key).getAsBoolean() : fallback; }
+		catch (Exception ignored) { return fallback; }
+	}
+
+	private static int intValue(JsonObject object, String key, int fallback)
+	{
+		try { return object != null && object.has(key) ? object.get(key).getAsInt() : fallback; }
+		catch (Exception ignored) { return fallback; }
+	}
+
+	private static long longValue(JsonObject object, String key, long fallback)
+	{
+		try { return object != null && object.has(key) ? object.get(key).getAsLong() : fallback; }
 		catch (Exception ignored) { return fallback; }
 	}
 
