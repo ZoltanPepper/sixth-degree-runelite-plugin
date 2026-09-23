@@ -8,8 +8,10 @@ import java.util.concurrent.CompletableFuture;
 import javax.imageio.ImageIO;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.ui.DrawManager;
 
+@Slf4j
 @Singleton
 final class SixthDegreeScreenshotService
 {
@@ -44,7 +46,13 @@ final class SixthDegreeScreenshotService
 			{
 				try
 				{
-					future.complete(toPng(snapshot));
+					byte[] png = toPng(snapshot);
+					log.info(
+						"Sixth Degree screenshot captured: {}x{} ({})",
+						snapshot.getWidth(),
+						snapshot.getHeight(),
+						formatBytes(png.length));
+					future.complete(png);
 				}
 				catch (Exception e)
 				{
@@ -74,6 +82,15 @@ final class SixthDegreeScreenshotService
 			graphics.dispose();
 		}
 		return copy;
+	}
+
+	private static String formatBytes(int bytes)
+	{
+		if (bytes >= 1024 * 1024)
+		{
+			return String.format(java.util.Locale.UK, "%.2f MiB", bytes / (1024.0 * 1024.0));
+		}
+		return Math.max(0, bytes / 1024) + " KiB";
 	}
 
 	private static byte[] toPng(BufferedImage buffered) throws Exception
