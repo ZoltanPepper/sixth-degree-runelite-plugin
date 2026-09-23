@@ -316,6 +316,11 @@ final class SixthDegreeNotificationCoordinator
 			return;
 		}
 		playEventSound(event);
+		log.info(
+			"Sixth Degree notification detected: {} (screenshot: {})",
+			event.type,
+			event.screenshot ? "requested" : "off");
+
 		if (!event.screenshot)
 		{
 			enqueue(new PendingNotification(event, null));
@@ -326,7 +331,10 @@ final class SixthDegreeNotificationCoordinator
 		{
 			if (error != null)
 			{
-				log.debug("Sixth Degree screenshot capture failed; posting without image", error);
+				log.warn(
+					"Sixth Degree screenshot capture failed for {} - posting without image: {}",
+					event.type,
+					errorMessage(error));
 				enqueue(new PendingNotification(event, null));
 			}
 			else
@@ -399,20 +407,54 @@ final class SixthDegreeNotificationCoordinator
 		{
 			boolean remove = error == null && response != null && response.ok;
 			boolean retry = false;
+			if (error == null && response != null && response.ok)
+			{
+				if (response.duplicate)
+				{
+					log.info("Sixth Degree notification duplicate ignored: {}", next.event.type);
+				}
+				else
+				{
+					log.info(
+						"Sixth Degree notification sent: {} (screenshot: {})",
+						next.event.type,
+						next.png == null ? "no" : "yes");
+				}
+			}
 			if (error != null)
 			{
 				Throwable cause = unwrap(error);
 				if (cause instanceof SixthDegreeApiClient.ApiException)
 				{
 					int code = ((SixthDegreeApiClient.ApiException) cause).getStatusCode();
-					remove = code == 400 || code == 409 || code == 401 || code == 403;
+					remove = isPermanentNotificationFailure(code);
 					if (code == 409)
 					{
 						refreshRules();
 					}
+					if (code == 413 && next.png != null)
+					{
+						log.warn(
+							"Sixth Degree screenshot upload rejected for {}: HTTP 413 {} (image {})",
+							next.event.type,
+							errorMessage(cause),
+							formatBytes(next.png.length));
+					}
+					else
+					{
+						log.warn(
+							"Sixth Degree notification upload failed for {}: HTTP {} {}",
+							next.event.type,
+							code,
+							errorMessage(cause));
+					}
 				}
 				else
 				{
+					log.warn(
+						"Sixth Degree notification transport failed for {}: {}",
+						next.event.type,
+						errorMessage(cause));
 					retry = true;
 				}
 				if (!remove)
@@ -420,6 +462,13 @@ final class SixthDegreeNotificationCoordinator
 					next.attempts++;
 					retry = next.attempts < 5;
 					remove = !retry;
+					if (remove)
+					{
+						log.warn(
+							"Sixth Degree notification abandoned after {} attempts: {}",
+							next.attempts,
+							next.event.type);
+					}
 				}
 			}
 
@@ -440,6 +489,31 @@ final class SixthDegreeNotificationCoordinator
 				scheduler.schedule(this::flush, 250, TimeUnit.MILLISECONDS);
 			}
 		});
+	}
+
+	static boolean isPermanentNotificationFailure(int code)
+	{
+		return code == 400 || code == 401 || code == 403 || code == 409 || code == 413;
+	}
+
+	private static String formatBytes(int bytes)
+	{
+		if (bytes >= 1024 * 1024)
+		{
+			return String.format(java.util.Locale.UK, "%.2f MiB", bytes / (1024.0 * 1024.0));
+		}
+		return Math.max(0, bytes / 1024) + " KiB";
+	}
+
+	private static String errorMessage(Throwable throwable)
+	{
+		Throwable cause = unwrap(throwable);
+		if (cause == null)
+		{
+			return "unknown error";
+		}
+		String message = cause.getMessage();
+		return message == null || message.isBlank() ? cause.getClass().getSimpleName() : message;
 	}
 
 	private static Throwable unwrap(Throwable throwable)
