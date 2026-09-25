@@ -13,7 +13,7 @@ repositories {
 	mavenCentral()
 }
 
-def runeLiteVersion = 'latest.release'
+def runeLiteVersion = providers.gradleProperty('runeLiteVersion').orElse('latest.release').get()
 def pluginMainClass = 'com.sixthdegree.SixthDegreePluginTest'
 
 dependencies {
@@ -39,6 +39,10 @@ java {
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
 	options.release.set(11)
+}
+
+tasks.withType(Test).configureEach {
+	systemProperty 'sixthdegree.runeliteVersion', runeLiteVersion
 }
 
 tasks.register('run', JavaExec) {

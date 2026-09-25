@@ -405,7 +405,7 @@ final class SixthDegreeNotificationEngine
 	{
 		try
 		{
-			int ge = itemManager.getItemPrice(itemId);
+			long ge = itemManager.getItemPrice(itemId);
 			if (ge > 0)
 			{
 				return ge;
