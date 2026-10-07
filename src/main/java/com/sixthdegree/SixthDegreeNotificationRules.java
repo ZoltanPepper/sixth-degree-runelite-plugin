@@ -13,6 +13,7 @@ final class SixthDegreeNotificationRules
 	final BasicRule collectionLogs;
 	final BasicRule deaths;
 	final BasicRule quests;
+	final BasicRule combatAchievements;
 	final MilestoneRule milestones;
 	final BossRule bossPbs;
 
@@ -23,6 +24,7 @@ final class SixthDegreeNotificationRules
 		BasicRule collectionLogs,
 		BasicRule deaths,
 		BasicRule quests,
+		BasicRule combatAchievements,
 		MilestoneRule milestones,
 		BossRule bossPbs)
 	{
@@ -32,6 +34,7 @@ final class SixthDegreeNotificationRules
 		this.collectionLogs = collectionLogs;
 		this.deaths = deaths;
 		this.quests = quests;
+		this.combatAchievements = combatAchievements;
 		this.milestones = milestones;
 		this.bossPbs = bossPbs;
 	}
@@ -44,6 +47,7 @@ final class SixthDegreeNotificationRules
 		JsonObject clogs = object(root, "collection_logs");
 		JsonObject deaths = object(root, "deaths");
 		JsonObject quests = object(root, "quests");
+		JsonObject combat = object(root, "combat_achievements");
 		JsonObject milestones = object(root, "milestones");
 		JsonObject boss = object(root, "boss_pbs");
 
@@ -60,14 +64,15 @@ final class SixthDegreeNotificationRules
 			new BasicRule(bool(clogs, "enabled", true), bool(clogs, "screenshots", true)),
 			new BasicRule(bool(deaths, "enabled", true), bool(deaths, "screenshots", true)),
 			new BasicRule(bool(quests, "enabled", true), bool(quests, "screenshots", true)),
+			new BasicRule(bool(combat, "enabled", true), bool(combat, "screenshots", true)),
 			new MilestoneRule(
 				bool(milestones, "enabled", true),
 				bool(milestones, "screenshots", true),
-				Math.max(1, integer(milestones, "minimum_level", 99)),
-				Math.max(1, integer(milestones, "level_interval", 1)),
-				Math.max(0, integer(milestones, "level_interval_override", 0)),
-				Math.max(1, integer(milestones, "screenshot_minimum_level", 99)),
-				Math.max(0, integer(milestones, "xp_interval_millions", 0))),
+				Math.max(1, integer(milestones, "minimum_level", 70)),
+				Math.max(1, integer(milestones, "level_interval", 5)),
+				Math.max(0, integer(milestones, "level_interval_override", 90)),
+				Math.max(1, integer(milestones, "screenshot_minimum_level", 70)),
+				Math.max(0, integer(milestones, "xp_interval_millions", 5))),
 			new BossRule(
 				bool(boss, "enabled", true),
 				bool(boss, "screenshots", true),

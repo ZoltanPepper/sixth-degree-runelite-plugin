@@ -42,6 +42,9 @@ final class SixthDegreeNotificationEngine
 	private static final Pattern BOSS_COUNT_SECONDARY = Pattern.compile(
 		"Your (?:completed|subdued) (.+?) count is: ([\\d,]+)\\b",
 		Pattern.CASE_INSENSITIVE);
+	private static final Pattern COMBAT_TASK = Pattern.compile(
+		"congratulations, you(?:'ve| have) completed an? (easy|medium|hard|elite|master|grandmaster) combat task: (.+?)[.!]?$",
+		Pattern.CASE_INSENSITIVE);
 	private static final Pattern BOSS_TIME = Pattern.compile(
 		"(?:Duration|time|Subdued in):? ([\\d:]+(?:\\.\\d+)?)",
 		Pattern.CASE_INSENSITIVE);
@@ -233,6 +236,26 @@ final class SixthDegreeNotificationEngine
 				"Pet drop",
 				0L,
 				current.pets.screenshots));
+		}
+
+		if (current.combatAchievements.enabled)
+		{
+			Matcher combatTask = COMBAT_TASK.matcher(message);
+			if (combatTask.matches())
+			{
+				String tier = combatTask.group(1);
+				String task = combatTask.group(2).trim();
+				if (!task.isBlank())
+				{
+					events.add(SixthDegreeNotificationEvent.of(
+						"combat_achievement",
+						task,
+						"Completed a " + tier.toLowerCase(Locale.ROOT) + " combat task.",
+						tier,
+						0L,
+						current.combatAchievements.screenshots));
+				}
+			}
 		}
 
 		if (current.collectionLogs.enabled && message.startsWith(COLLECTION_LOG_PREFIX))
@@ -523,14 +546,11 @@ final class SixthDegreeNotificationEngine
 		int current,
 		SixthDegreeNotificationRules.MilestoneRule rule)
 	{
-		if (current < rule.minimumLevel)
+		if (current < rule.minimumLevel || current <= previous)
 		{
 			return false;
 		}
-		if (current == 99)
-		{
-			return true;
-		}
+		// From the every-level threshold (90 by default) through 99, every level posts.
 		if (rule.levelIntervalOverride > 0 && current >= rule.levelIntervalOverride)
 		{
 			return true;

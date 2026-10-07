@@ -32,7 +32,10 @@ public class SixthDegreeNotificationRulesTest
 		assertTrue(rules.loot.enabled);
 		assertEquals(5_000_000L, rules.loot.minimumValue);
 		assertEquals(0, rules.loot.rarityOverride);
-		assertEquals(99, rules.milestones.minimumLevel);
+		assertEquals(70, rules.milestones.minimumLevel);
+		assertEquals(5, rules.milestones.xpIntervalMillions);
+		assertTrue(rules.combatAchievements.enabled);
+		assertTrue(rules.combatAchievements.screenshots);
 		assertTrue(rules.bossPbs.notifyPersonalBests);
 		assertTrue(rules.deaths.enabled);
 		assertTrue(rules.deaths.screenshots);
@@ -172,5 +175,59 @@ public class SixthDegreeNotificationRulesTest
 		enabled.add("deaths", deaths);
 		engine.setRules(SixthDegreeNotificationRules.from(enabled));
 		assertNull(engine.onActorDeath(localDeath));
+	}
+
+	@Test
+	public void combatTaskCreatesScreenshotNotification()
+	{
+		SixthDegreeNotificationEngine engine = new SixthDegreeNotificationEngine(
+			mock(Client.class), mock(ItemManager.class), mock(SixthDegreeRarityService.class));
+		JsonObject enabled = new JsonObject();
+		enabled.addProperty("engine_live", true);
+		engine.setRules(SixthDegreeNotificationRules.from(enabled));
+
+		List<SixthDegreeNotificationEvent> notifications = engine.onGameMessage(
+			"Congratulations, you've completed a hard combat task: Perfect Royal Titans.");
+		assertEquals(1, notifications.size());
+		SixthDegreeNotificationEvent notification = notifications.get(0);
+		assertEquals("combat_achievement", notification.type);
+		assertEquals("Perfect Royal Titans", notification.title);
+		assertEquals("hard", notification.source);
+		assertTrue(notification.screenshot);
+	}
+
+	@Test
+	public void levelMilestonesFollowSeventyAndNinetyPolicy()
+	{
+		Client client = mock(Client.class);
+		when(client.getRealSkillLevel(any(Skill.class))).thenReturn(1);
+		when(client.getSkillExperience(any(Skill.class))).thenReturn(0);
+		when(client.getRealSkillLevel(Skill.HITPOINTS)).thenReturn(69);
+		when(client.getSkillExperience(Skill.HITPOINTS)).thenReturn(700_000);
+		when(client.getTotalLevel()).thenReturn(1500);
+
+		SixthDegreeNotificationEngine engine = new SixthDegreeNotificationEngine(
+			client, mock(ItemManager.class), mock(SixthDegreeRarityService.class));
+		JsonObject enabled = new JsonObject();
+		enabled.addProperty("engine_live", true);
+		engine.setRules(SixthDegreeNotificationRules.from(enabled));
+		engine.initializeStats();
+
+		assertEquals(1, levelUp(engine, 70).size());
+		assertEquals(0, levelUp(engine, 71).size());
+		assertEquals(1, levelUp(engine, 75).size());
+		assertEquals(0, levelUp(engine, 76).size());
+		assertEquals(1, levelUp(engine, 90).size());
+		assertEquals(1, levelUp(engine, 95).size());
+		assertEquals(1, levelUp(engine, 99).size());
+	}
+
+	private static List<SixthDegreeNotificationEvent> levelUp(SixthDegreeNotificationEngine engine, int level)
+	{
+		StatChanged changed = mock(StatChanged.class);
+		when(changed.getSkill()).thenReturn(Skill.HITPOINTS);
+		when(changed.getLevel()).thenReturn(level);
+		when(changed.getXp()).thenReturn(level * 100_000);
+		return engine.onStatChanged(changed);
 	}
 }
