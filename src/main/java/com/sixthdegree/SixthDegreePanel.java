@@ -538,7 +538,7 @@ public class SixthDegreePanel extends PluginPanel
 		{
 			for (SixthDegreeApiClient.EventItem event : data.events)
 			{
-				if (event.live || (event.event_type != null && !event.event_type.isBlank()))
+				if (event != null && event.title != null && !event.title.isBlank())
 				{
 					visible.add(event);
 				}
