@@ -534,14 +534,21 @@ public class SixthDegreePanel extends PluginPanel
 		clearContent();
 		addHeading("EVENT HOME");
 		List<SixthDegreeApiClient.EventItem> visible = new ArrayList<>();
+		long now = Instant.now().getEpochSecond();
 		if (data.events != null)
 		{
 			for (SixthDegreeApiClient.EventItem event : data.events)
 			{
-				if (event != null && event.title != null && !event.title.isBlank())
+				if (event == null || event.title == null || event.title.isBlank())
 				{
-					visible.add(event);
+					continue;
 				}
+				long end = event.end_time > 0 ? event.end_time : event.start_time;
+				if (!event.live && end > 0 && end < now)
+				{
+					continue;
+				}
+				visible.add(event);
 			}
 		}
 		if (visible.isEmpty())
@@ -570,7 +577,9 @@ public class SixthDegreePanel extends PluginPanel
 	private JPanel eventCard(SixthDegreeApiClient.EventItem event)
 	{
 		JPanel panel = card();
-		addCardTitle(panel, event.live ? "LIVE" : "UPCOMING");
+		long now = Instant.now().getEpochSecond();
+		boolean finished = !event.live && event.start_time > 0 && event.start_time < now;
+		addCardTitle(panel, event.live ? "LIVE" : finished ? "FINISHED" : "UPCOMING");
 		addCardStrong(panel, escape(nullTo(event.title, "Clan Event")));
 		addCardText(panel, event.live ? "Ends " + remaining(event.end_time) : formatDate(event.start_time));
 		if (event.world > 0) addCardText(panel, "World <b>" + event.world + "</b>");

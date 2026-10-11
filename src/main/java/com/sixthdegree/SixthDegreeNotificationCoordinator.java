@@ -30,7 +30,7 @@ import net.runelite.http.api.loottracker.LootRecordType;
 final class SixthDegreeNotificationCoordinator
 {
 	private static final int MAX_PENDING = 30;
-	private static final long RULE_REFRESH_MINUTES = 5L;
+	private static final long RULE_REFRESH_SECONDS = 30L;
 
 	private final SixthDegreeNotificationEngine engine;
 	private final SixthDegreeScreenshotService screenshots;
@@ -80,9 +80,9 @@ final class SixthDegreeNotificationCoordinator
 			});
 			scheduler.scheduleAtFixedRate(
 				this::refreshRules,
-				RULE_REFRESH_MINUTES,
-				RULE_REFRESH_MINUTES,
-				TimeUnit.MINUTES);
+				RULE_REFRESH_SECONDS,
+				RULE_REFRESH_SECONDS,
+				TimeUnit.SECONDS);
 			scheduler.scheduleAtFixedRate(this::flush, 10, 10, TimeUnit.SECONDS);
 		}
 	}
