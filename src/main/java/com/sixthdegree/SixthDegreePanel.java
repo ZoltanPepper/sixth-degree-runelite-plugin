@@ -458,6 +458,8 @@ public class SixthDegreePanel extends PluginPanel
 		addBasicRule("DEATHS", nested(rules, "deaths"));
 		addGap(6);
 		addBasicRule("QUESTS", nested(rules, "quests"));
+		addGap(7);
+		addBasicRule("COMBAT ACHIEVEMENTS", nested(rules, "combat_achievements"));
 		addGap(6);
 		addMilestoneRule(nested(rules, "milestones"));
 		addGap(6);
@@ -792,11 +794,11 @@ public class SixthDegreePanel extends PluginPanel
 		JPanel panel = card();
 		addCardTitle(panel, "LEVEL / XP MILESTONES");
 		addCardText(panel, bool(rule, "enabled", false) ? "Enabled ✓" : "Disabled");
-		int minimum = intValue(rule, "minimum_level", 99);
-		int interval = intValue(rule, "level_interval", 1);
-		int override = intValue(rule, "level_interval_override", 0);
-		int screenshotMinimum = intValue(rule, "screenshot_minimum_level", 99);
-		int xpMillions = intValue(rule, "xp_interval_millions", 0);
+		int minimum = intValue(rule, "minimum_level", 70);
+		int interval = intValue(rule, "level_interval", 5);
+		int override = intValue(rule, "level_interval_override", 90);
+		int screenshotMinimum = intValue(rule, "screenshot_minimum_level", 70);
+		int xpMillions = intValue(rule, "xp_interval_millions", 5);
 		addCardText(panel, "Skill levels: <b>" + minimum + "+</b> • every <b>" + interval + "</b>");
 		if (override > 0) addCardText(panel, "Every level from: <b>" + override + "</b>");
 		addCardText(panel, "Screenshots: <b>" + (bool(rule, "screenshots", false) ? "On" : "Off") + "</b>"
