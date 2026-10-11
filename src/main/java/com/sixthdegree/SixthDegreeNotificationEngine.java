@@ -152,18 +152,18 @@ final class SixthDegreeNotificationEngine
 		lastTotalLevel = 0;
 	}
 
-	SixthDegreeNotificationEvent onLoot(Collection<ItemStack> items, String source)
+	List<SixthDegreeNotificationEvent> onLoot(Collection<ItemStack> items, String source)
 	{
 		SixthDegreeNotificationRules current = rules;
 		if (!current.engineLive || !current.loot.enabled || items == null || items.isEmpty())
 		{
-			return null;
+			return List.of();
 		}
 
 		List<ItemStack> reduced = reduceItems(items);
 		if (reduced.isEmpty() || duplicateLootThisTick(reduced, source))
 		{
-			return null;
+			return List.of();
 		}
 
 		List<DropPart> parts = new ArrayList<>();
@@ -178,41 +178,52 @@ final class SixthDegreeNotificationEngine
 		}
 
 		String cleanSource = safeSource(source, "Loot");
+		List<SixthDegreeNotificationEvent> events = new ArrayList<>();
 		boolean valueTriggered = parts.stream()
 			.anyMatch(part -> part.value >= current.loot.minimumValue);
-		boolean rarityTriggered = !valueTriggered
-			&& current.loot.rarityOverride > 0
-			&& rarityService.qualifies(cleanSource, reduced, current.loot.rarityOverride);
-		if (!valueTriggered && !rarityTriggered)
+		if (valueTriggered)
 		{
-			return null;
+			List<DropPart> ordered = new ArrayList<>(parts);
+			ordered.sort(Comparator.comparingLong((DropPart part) -> part.value).reversed());
+			String title = ordered.size() == 1 ? ordered.get(0).name : "Valuable loot";
+			String detail = ordered.stream()
+				.limit(8)
+				.map(part -> part.quantity + " x " + part.name + " — " + formatGp(part.value))
+				.collect(Collectors.joining("\n"));
+			events.add(SixthDegreeNotificationEvent.loot(
+				title,
+				detail,
+				cleanSource,
+				total,
+				current.loot.screenshots && total >= current.loot.screenshotMinimumValue,
+				ordered.get(0).itemId,
+				false));
 		}
 
-		parts.sort(Comparator.comparingLong((DropPart part) -> part.value).reversed());
-		String title;
-		if (parts.size() == 1)
+		if (current.loot.rarityOverride > 0)
 		{
-			title = parts.get(0).name;
+			for (DropPart part : parts)
+			{
+				if (part.value >= current.loot.minimumValue)
+				{
+					continue;
+				}
+				ItemStack stack = new ItemStack(part.itemId, part.quantity);
+				if (!rarityService.qualifies(cleanSource, List.of(stack), current.loot.rarityOverride))
+				{
+					continue;
+				}
+				events.add(SixthDegreeNotificationEvent.loot(
+					part.name,
+					part.quantity + " x " + part.name + " — " + formatGp(part.value),
+					cleanSource,
+					part.value,
+					current.loot.screenshots,
+					part.itemId,
+					true));
+			}
 		}
-		else
-		{
-			title = rarityTriggered ? "Rare loot" : "Valuable loot";
-		}
-
-		String detail = parts.stream()
-			.limit(8)
-			.map(part -> part.quantity + " x " + part.name + " — " + formatGp(part.value))
-			.collect(Collectors.joining("\n"));
-
-		int thumbnailItemId = parts.isEmpty() ? 0 : parts.get(0).itemId;
-		return SixthDegreeNotificationEvent.loot(
-			title,
-			detail,
-			cleanSource,
-			total,
-			current.loot.screenshots && total >= current.loot.screenshotMinimumValue,
-			thumbnailItemId,
-			rarityTriggered);
+		return events;
 	}
 
 	List<SixthDegreeNotificationEvent> onGameMessage(String rawMessage)

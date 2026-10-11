@@ -94,11 +94,12 @@ public class SixthDegreeRuneLite113CompatibilityTest
 		root.add("loot", loot);
 		engine.setRules(SixthDegreeNotificationRules.from(root));
 
-		SixthDegreeNotificationEvent event = engine.onLoot(
+		java.util.List<SixthDegreeNotificationEvent> events = engine.onLoot(
 			List.of(new ItemStack(TEST_ITEM_ID, 2)),
 			"Compatibility test");
 
-		assertNotNull(event);
+		assertFalse(events.isEmpty());
+		SixthDegreeNotificationEvent event = events.get(0);
 		assertEquals("loot", event.type);
 		assertEquals(6_000_000_000L, event.valueGp);
 		assertTrue(event.screenshot);

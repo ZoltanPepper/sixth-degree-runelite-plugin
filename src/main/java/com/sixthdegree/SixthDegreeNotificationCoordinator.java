@@ -198,7 +198,7 @@ final class SixthDegreeNotificationCoordinator
 			return;
 		}
 		String source = event.getNpc() == null ? "NPC" : event.getNpc().getName();
-		dispatch(engine.onLoot(event.getItems(), source));
+		engine.onLoot(event.getItems(), source).forEach(this::dispatch);
 	}
 
 	@Subscribe(priority = 0)
@@ -209,7 +209,7 @@ final class SixthDegreeNotificationCoordinator
 			return;
 		}
 		String source = event.getComposition() == null ? "NPC" : event.getComposition().getName();
-		dispatch(engine.onLoot(event.getItems(), source));
+		engine.onLoot(event.getItems(), source).forEach(this::dispatch);
 	}
 
 	@Subscribe(priority = 0)
@@ -226,7 +226,7 @@ final class SixthDegreeNotificationCoordinator
 		{
 			return;
 		}
-		dispatch(engine.onLoot(event.getItems(), event.getName()));
+		engine.onLoot(event.getItems(), event.getName()).forEach(this::dispatch);
 	}
 
 	@Subscribe
