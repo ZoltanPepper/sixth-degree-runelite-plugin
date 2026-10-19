@@ -463,7 +463,7 @@ final class SixthDegreeNotificationEngine
 		}
 		try
 		{
-			for (net.runelite.client.game.ItemPrice price : itemManager.search(name))
+			for (net.runelite.http.api.item.ItemPrice price : itemManager.search(name))
 			{
 				if (price != null && name.equalsIgnoreCase(price.getName()))
 				{
