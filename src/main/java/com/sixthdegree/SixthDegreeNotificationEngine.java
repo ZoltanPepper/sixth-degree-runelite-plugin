@@ -272,13 +272,14 @@ final class SixthDegreeNotificationEngine
 		if (current.collectionLogs.enabled && message.startsWith(COLLECTION_LOG_PREFIX))
 		{
 			String item = message.substring(COLLECTION_LOG_PREFIX.length()).trim();
-			events.add(SixthDegreeNotificationEvent.of(
-				"collection_log",
+			int itemId = itemIdForName(item);
+			events.add(SixthDegreeNotificationEvent.loot(
 				item.isBlank() ? "New collection log item" : item,
 				"New item added to the collection log.",
 				"Collection Log",
 				0L,
-				current.collectionLogs.screenshots));
+				current.collectionLogs.screenshots,
+				itemId).withType("collection_log"));
 		}
 
 		if (current.bossPbs.enabled)
@@ -451,6 +452,30 @@ final class SixthDegreeNotificationEngine
 		{
 			return 0L;
 		}
+	}
+
+
+	private int itemIdForName(String name)
+	{
+		if (name == null || name.isBlank())
+		{
+			return 0;
+		}
+		try
+		{
+			for (net.runelite.client.game.ItemPrice price : itemManager.search(name))
+			{
+				if (price != null && name.equalsIgnoreCase(price.getName()))
+				{
+					return price.getId();
+				}
+			}
+		}
+		catch (Exception ignored)
+		{
+			return 0;
+		}
+		return 0;
 	}
 
 	private String itemName(int itemId)

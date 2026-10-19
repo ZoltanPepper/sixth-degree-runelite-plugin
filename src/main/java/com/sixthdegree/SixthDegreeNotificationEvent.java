@@ -93,6 +93,12 @@ final class SixthDegreeNotificationEvent
 			rarityTriggered);
 	}
 
+	SixthDegreeNotificationEvent withType(String newType)
+	{
+		return new SixthDegreeNotificationEvent(
+			eventId, newType, title, detail, source, valueGp, occurredAt, screenshot, itemId, rarityTriggered);
+	}
+
 	SixthDegreeNotificationEvent withScreenshot(boolean enabled)
 	{
 		if (screenshot == enabled)
