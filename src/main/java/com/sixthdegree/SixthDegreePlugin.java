@@ -22,6 +22,7 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
+import net.runelite.api.Text;
 import net.runelite.api.clan.ClanSettings;
 import net.runelite.api.events.ClanChannelChanged;
 import net.runelite.api.events.GameStateChanged;
@@ -573,7 +574,7 @@ public class SixthDegreePlugin extends Plugin
 			QueuedMessage.builder()
 				.type(ChatMessageType.CONSOLE)
 				.name("Sixth Degree")
-				.runeLiteFormattedMessage("<col=ff69b4>[Sixth Degree] " + message + "</col>")
+				.runeLiteFormattedMessage("<col=ff69b4>[Sixth Degree] " + Text.escapeJagex(message) + "</col>")
 				.build());
 	}
 
