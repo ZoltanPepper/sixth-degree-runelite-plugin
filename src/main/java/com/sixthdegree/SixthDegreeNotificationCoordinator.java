@@ -36,6 +36,7 @@ final class SixthDegreeNotificationCoordinator
 	private final SixthDegreeScreenshotService screenshots;
 	private final SixthDegreeRarityService rarityService;
 	private final SixthDegreeCompetitionTracker competitionTracker;
+	private final SixthDegreePointsTracker pointsTracker;
 	private final SixthDegreeSoundService sounds;
 	private final SixthDegreeConfig config;
 	private final Deque<PendingNotification> pending = new ArrayDeque<>();
@@ -55,6 +56,7 @@ final class SixthDegreeNotificationCoordinator
 		SixthDegreeScreenshotService screenshots,
 		SixthDegreeRarityService rarityService,
 		SixthDegreeCompetitionTracker competitionTracker,
+		SixthDegreePointsTracker pointsTracker,
 		SixthDegreeSoundService sounds,
 		SixthDegreeConfig config)
 	{
@@ -62,6 +64,7 @@ final class SixthDegreeNotificationCoordinator
 		this.screenshots = screenshots;
 		this.rarityService = rarityService;
 		this.competitionTracker = competitionTracker;
+		this.pointsTracker = pointsTracker;
 		this.sounds = sounds;
 		this.config = config;
 	}
@@ -113,6 +116,7 @@ final class SixthDegreeNotificationCoordinator
 		sessionToken = token;
 		active = true;
 		competitionTracker.activate(token);
+		pointsTracker.activate(token);
 		if (changed)
 		{
 			engine.reset();
@@ -127,6 +131,7 @@ final class SixthDegreeNotificationCoordinator
 		active = false;
 		sessionToken = null;
 		competitionTracker.deactivate();
+		pointsTracker.deactivate();
 		engine.setRules(SixthDegreeNotificationRules.DISABLED);
 		engine.reset();
 	}
@@ -244,6 +249,7 @@ final class SixthDegreeNotificationCoordinator
 			return;
 		}
 		competitionTracker.onChatMessage(event);
+		pointsTracker.onChatMessage(event);
 		List<SixthDegreeNotificationEvent> events = engine.onGameMessage(event.getMessage());
 		for (SixthDegreeNotificationEvent notification : events)
 		{

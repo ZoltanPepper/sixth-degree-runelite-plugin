@@ -167,6 +167,32 @@ final class SixthDegreeApiClient
 		return sendJson(request, LootBatchResponse.class);
 	}
 
+
+	CompletableFuture<PointsTableResponse> getPointsTable(String sessionToken)
+	{
+		return getAuthed("/points/table", sessionToken, PointsTableResponse.class);
+	}
+
+	CompletableFuture<KcProgressResponse> postKcProgress(
+		String sessionToken,
+		String telemetryId,
+		String boss,
+		int delta)
+	{
+		JsonObject award = new JsonObject();
+		award.addProperty("boss", boss);
+		award.addProperty("delta", delta);
+		com.google.gson.JsonArray awards = new com.google.gson.JsonArray();
+		awards.add(award);
+		JsonObject payload = new JsonObject();
+		payload.addProperty("telemetry_id", telemetryId);
+		payload.add("awards", awards);
+		Request request = authedRequest(API_BASE + "/points/kc", sessionToken)
+			.post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)))
+			.build();
+		return sendJson(request, KcProgressResponse.class);
+	}
+
 	CompletableFuture<LootLeaderboardResponse> getLootLeaderboard(String period, String sessionToken)
 	{
 		return getAuthed("/leaderboards/loot?period=" + period, sessionToken, LootLeaderboardResponse.class);
@@ -188,7 +214,7 @@ final class SixthDegreeApiClient
 		return new Request.Builder()
 			.url(url)
 			.header("Accept", "application/json")
-			.header("User-Agent", "Sixth-Degree-RuneLite/0.1.14")
+			.header("User-Agent", "Sixth-Degree-RuneLite/2.0.0")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite");
 	}
 
@@ -493,5 +519,25 @@ final class SixthDegreeApiClient
 		long value_gp;
 		long drop_count;
 		long updated_at;
+	}
+
+	static final class PointsTableResponse
+	{
+		boolean ok;
+		BossPointRow[] bosses;
+	}
+
+	static final class BossPointRow
+	{
+		String boss;
+		int points;
+	}
+
+	static final class KcProgressResponse
+	{
+		boolean ok;
+		boolean accepted;
+		int earned;
+		int total;
 	}
 }

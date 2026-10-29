@@ -14,6 +14,7 @@ The plugin keeps clan events, competitions, LFG and clan notifications in one Ru
 - Boss of the Week (BOTW) standings and tracking, including catch-up for KC gained on mobile between RuneLite sessions
 - Skill of the Week (SOTW) standings and tracking
 - Looking For Group (LFG) with current world and live member notifications
+- Clan points from boss KC. The first count seen for a boss is a baseline; later increases, including mobile kills, are scored by Boss Lady and confirmed in game chat
 - Clan-managed loot, pet, collection-log, death, level/XP and boss KC/PB notifications
 - Automatic screenshots for notification types enabled by the clan configuration
 - Optional death screenshots controlled by each member in RuneLite settings
@@ -50,6 +51,7 @@ Depending on the feature being used, the service may receive:
 - clan event and competition telemetry
 - LFG activity and current world when an LFG is posted
 - loot values used for the clan leaderboard
+- boss name and KC delta used to award clan points
 - notification metadata such as loot, pets, collection-log entries, levels/XP and boss updates
 - RuneLite screenshots when the clan notification rules require one
 
