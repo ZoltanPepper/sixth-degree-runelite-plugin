@@ -95,9 +95,14 @@ public class SixthDegreePlugin extends Plugin
 	@Inject
 	private SixthDegreeSoundService sounds;
 
+	@Inject
+	private SixthDegreePointsTracker pointsTracker;
+
+
 	private final AtomicBoolean authPollInFlight = new AtomicBoolean(false);
 	private final AtomicBoolean lootSendInFlight = new AtomicBoolean(false);
 	private final AtomicBoolean realtimeConnecting = new AtomicBoolean(false);
+
 
 	private SixthDegreePanel panel;
 	private NavigationButton navigationButton;
@@ -116,6 +121,7 @@ public class SixthDegreePlugin extends Plugin
 	private volatile String pendingAuthRequestId;
 	private volatile String pendingAuthRsn;
 
+
 	@Override
 	protected void startUp()
 	{
@@ -126,6 +132,7 @@ public class SixthDegreePlugin extends Plugin
 			thread.setDaemon(true);
 			return thread;
 		});
+
 
 		panel = new SixthDegreePanel(
 			apiClient,
@@ -145,8 +152,11 @@ public class SixthDegreePlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navigationButton);
 
+
 		notificationCoordinator.start(apiClient);
 		eventBus.register(notificationCoordinator);
+		eventBus.register(pointsTracker);
+
 
 		lootFlushTask = scheduler.scheduleAtFixedRate(
 			this::flushLootTelemetry,
@@ -171,9 +181,11 @@ public class SixthDegreePlugin extends Plugin
 			30,
 			TimeUnit.SECONDS);
 
+
 		refreshAccessState();
 		log.debug("Sixth Degree started");
 	}
+
 
 	@Override
 	protected void shutDown()
@@ -184,7 +196,9 @@ public class SixthDegreePlugin extends Plugin
 		disconnectRealtime();
 		cancelAuthPolling();
 		eventBus.unregister(notificationCoordinator);
+		eventBus.unregister(pointsTracker);
 		notificationCoordinator.stop();
+		pointsTracker.deactivate();
 		sounds.stop();
 		if (lootFlushTask != null)
 		{
@@ -219,6 +233,7 @@ public class SixthDegreePlugin extends Plugin
 		log.debug("Sixth Degree stopped");
 	}
 
+
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
@@ -230,10 +245,12 @@ public class SixthDegreePlugin extends Plugin
 			flushLootTelemetry();
 			disconnectRealtime();
 			notificationCoordinator.deactivate();
+			pointsTracker.deactivate();
 			connectionAnnouncedRsn = null;
 		}
 		refreshAccessState();
 	}
+
 
 	@Subscribe
 	public void onClanChannelChanged(ClanChannelChanged event)
@@ -244,6 +261,7 @@ public class SixthDegreePlugin extends Plugin
 		}
 	}
 
+
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
@@ -252,6 +270,7 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		membershipTicks++;
 		if (membershipTicks >= MEMBERSHIP_RECHECK_TICKS)
 		{
@@ -259,6 +278,7 @@ public class SixthDegreePlugin extends Plugin
 			refreshAccessState();
 		}
 	}
+
 
 	@Subscribe(priority = 1)
 	public void onNpcLootReceived(NpcLootReceived event)
@@ -269,6 +289,7 @@ public class SixthDegreePlugin extends Plugin
 		}
 	}
 
+
 	@Subscribe(priority = 1)
 	public void onServerNpcLoot(ServerNpcLoot event)
 	{
@@ -278,6 +299,7 @@ public class SixthDegreePlugin extends Plugin
 		}
 	}
 
+
 	@Subscribe
 	public void onLootReceived(LootReceived event)
 	{
@@ -286,6 +308,7 @@ public class SixthDegreePlugin extends Plugin
 			lootService.record(event.getItems());
 		}
 	}
+
 
 	private boolean canSendMemberTelemetry()
 	{
@@ -297,6 +320,7 @@ public class SixthDegreePlugin extends Plugin
 			&& isCurrentAccountInSixthDegree(rsn);
 	}
 
+
 	private void refreshAccessState()
 	{
 		if (panel == null)
@@ -304,11 +328,13 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		if (client.getGameState() != GameState.LOGGED_IN)
 		{
 			panel.showLoggedOut();
 			return;
 		}
+
 
 		String rsn = currentRsn();
 		if (rsn == null)
@@ -316,6 +342,7 @@ public class SixthDegreePlugin extends Plugin
 			panel.showLoggedOut();
 			return;
 		}
+
 
 		if (!isCurrentAccountInSixthDegree(rsn))
 		{
@@ -325,11 +352,13 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		if (pendingAuthRequestId != null && sameRsn(rsn, pendingAuthRsn))
 		{
 			panel.showLinking(rsn);
 			return;
 		}
+
 
 		String token = loadSessionToken(rsn);
 		if (token == null || token.isBlank())
@@ -339,6 +368,7 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		long now = System.currentTimeMillis();
 		if (sessionValid && sameRsn(rsn, validatedRsn) && now - lastSessionCheckMillis < SESSION_RECHECK_MILLIS)
 		{
@@ -347,8 +377,10 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		validateSession(rsn, token);
 	}
+
 
 	private void showMemberPanel(String rsn, String token)
 	{
@@ -361,6 +393,7 @@ public class SixthDegreePlugin extends Plugin
 			config.deathScreenshots()
 		);
 	}
+
 
 	private void validateSession(String rsn, String token)
 	{
@@ -375,10 +408,12 @@ public class SixthDegreePlugin extends Plugin
 			panel.showCheckingAccess(rsn);
 		}
 
+
 		apiClient.getMemberStatus(token).whenComplete((status, throwable) ->
 			clientThread.invokeLater(() ->
 				handleSessionValidation(rsn, status, throwable, preserveMemberPanel)));
 	}
+
 
 	private void handleSessionValidation(
 		String rsn,
@@ -391,6 +426,7 @@ public class SixthDegreePlugin extends Plugin
 		{
 			return;
 		}
+
 
 		if (throwable != null)
 		{
@@ -411,12 +447,14 @@ public class SixthDegreePlugin extends Plugin
 				}
 			}
 
+
 			if (!preserveMemberPanel)
 			{
 				panel.showConnectionError(rsn, () -> clientThread.invokeLater(this::refreshAccessState));
 			}
 			return;
 		}
+
 
 		if (status == null || !status.ok || !"member".equalsIgnoreCase(status.access) || !sameRsn(rsn, status.rsn))
 		{
@@ -425,6 +463,7 @@ public class SixthDegreePlugin extends Plugin
 			panel.showDiscordLinkRequired(rsn, () -> clientThread.invokeLater(() -> beginDiscordLink(rsn)));
 			return;
 		}
+
 
 		validatedRsn = rsn;
 		sessionValid = true;
@@ -436,9 +475,11 @@ public class SixthDegreePlugin extends Plugin
 			announceConnectedOnce(rsn);
 			ensureRealtimeConnected();
 			notificationCoordinator.activate(token);
+			pointsTracker.activate(token);
 			flushLootTelemetry();
 		}
 	}
+
 
 	private void beginDiscordLink(String rsn)
 	{
@@ -447,10 +488,12 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		panel.showCheckingAccess(rsn);
 		apiClient.startDiscordAuth(rsn).whenComplete((auth, throwable) ->
 			clientThread.invokeLater(() -> handleAuthStart(rsn, auth, throwable)));
 	}
+
 
 	private void handleAuthStart(String rsn, SixthDegreeApiClient.AuthStart auth, Throwable throwable)
 	{
@@ -464,12 +507,14 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		pendingAuthRequestId = auth.request_id;
 		pendingAuthRsn = rsn;
 		panel.showLinking(rsn);
 		SwingUtilities.invokeLater(() -> LinkBrowser.browse(auth.authorize_url));
 		startAuthPolling();
 	}
+
 
 	private void startAuthPolling()
 	{
@@ -479,6 +524,7 @@ public class SixthDegreePlugin extends Plugin
 			authPollTask = scheduler.scheduleAtFixedRate(this::pollDiscordAuth, 2, 2, TimeUnit.SECONDS);
 		}
 	}
+
 
 	private void pollDiscordAuth()
 	{
@@ -493,12 +539,14 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		apiClient.getDiscordAuthStatus(requestId).whenComplete((status, throwable) ->
 		{
 			authPollInFlight.set(false);
 			clientThread.invokeLater(() -> handleAuthPollResult(rsn, status, throwable));
 		});
 	}
+
 
 	private void handleAuthPollResult(String rsn, SixthDegreeApiClient.AuthStatus status, Throwable throwable)
 	{
@@ -522,6 +570,7 @@ public class SixthDegreePlugin extends Plugin
 			return;
 		}
 
+
 		switch (status.status.toLowerCase(Locale.ROOT))
 		{
 			case "approved":
@@ -539,6 +588,7 @@ public class SixthDegreePlugin extends Plugin
 				announceConnectedOnce(rsn);
 				ensureRealtimeConnected();
 				notificationCoordinator.activate(status.session_token);
+				pointsTracker.activate(status.session_token);
 				break;
 			case "denied":
 				finishAuthFailure(rsn, status.reason == null ? "Discord access was not approved." : status.reason);
@@ -550,6 +600,7 @@ public class SixthDegreePlugin extends Plugin
 				break;
 		}
 	}
+
 
 	private void announceConnectedOnce(String rsn)
 	{
@@ -570,6 +621,7 @@ public class SixthDegreePlugin extends Plugin
 		}
 	}
 
+
 	private void addGameMessage(String message)
 	{
 		if (client.getGameState() != GameState.LOGGED_IN)
@@ -584,6 +636,7 @@ public class SixthDegreePlugin extends Plugin
 				.build());
 	}
 
+
 	private void ensureRealtimeConnected()
 	{
 		if (!canSendMemberTelemetry() || realtimeSocket != null || realtimeConnecting.get())
@@ -596,6 +649,7 @@ public class SixthDegreePlugin extends Plugin
 		{
 			return;
 		}
+
 
 		realtimeClient.connect(
 			token,
@@ -616,6 +670,7 @@ public class SixthDegreePlugin extends Plugin
 				realtimeSocket = socket;
 			});
 	}
+
 
 	private void handleRealtimeEvent(SixthDegreeRealtimeClient.RealtimeEvent event)
 	{
@@ -656,6 +711,7 @@ public class SixthDegreePlugin extends Plugin
 		}
 	}
 
+
 	private void disconnectRealtime()
 	{
 		WebSocket socket = realtimeSocket;
@@ -674,37 +730,47 @@ public class SixthDegreePlugin extends Plugin
 		}
 	}
 
+
 	private void flushLootTelemetry()
 	{
 		lootService.sealBatch();
-		if (!canSendMemberTelemetry() || lootSendInFlight.get())
+		if (!canSendMemberTelemetry() || !lootSendInFlight.compareAndSet(false, true))
 		{
 			return;
 		}
-		SixthDegreeLootService.LootBatch batch = lootService.poll();
-		if (batch == null)
+		String token = loadSessionToken(validatedRsn);
+		if (token == null || token.isBlank())
 		{
+			lootSendInFlight.set(false);
 			return;
 		}
-		String rsn = validatedRsn;
-		String token = rsn == null ? null : loadSessionToken(rsn);
-		if (token == null || token.isBlank() || !lootSendInFlight.compareAndSet(false, true))
-		{
-			return;
-		}
-		apiClient.postLootBatch(token, batch.batchId, batch.valueGp, batch.dropCount, batch.recordedAt)
+		apiClient.postLootBatch(token, lootService.nextBatchId(), lootService.drainValue(), lootService.drainCount(), System.currentTimeMillis() / 1000L)
 			.whenComplete((response, error) -> lootSendInFlight.set(false));
 	}
+
 
 	private void removeLfgForValidatedAccount()
 	{
 		String rsn = validatedRsn;
-		String token = rsn == null ? null : loadSessionToken(rsn);
+		if (rsn == null)
+		{
+			return;
+		}
+		String token = loadSessionToken(rsn);
 		if (token != null && !token.isBlank())
 		{
 			apiClient.deleteMyLfg(token);
 		}
 	}
+
+
+	private void clearTransientValidation()
+	{
+		validatedRsn = null;
+		sessionValid = false;
+		lastSessionCheckMillis = 0L;
+	}
+
 
 	private void cancelAuthPolling()
 	{
@@ -712,6 +778,7 @@ public class SixthDegreePlugin extends Plugin
 		pendingAuthRequestId = null;
 		pendingAuthRsn = null;
 	}
+
 
 	private void cancelAuthPollingTaskOnly()
 	{
@@ -722,19 +789,45 @@ public class SixthDegreePlugin extends Plugin
 		}
 	}
 
+
 	private void finishAuthFailure(String rsn, String reason)
 	{
 		cancelAuthPolling();
-		clearTransientValidation();
 		panel.showDiscordLinkRequired(rsn, () -> clientThread.invokeLater(() -> beginDiscordLink(rsn)), reason);
 	}
 
-	private void clearTransientValidation()
+
+	private String loadSessionToken(String rsn)
 	{
-		validatedRsn = null;
-		sessionValid = false;
-		lastSessionCheckMillis = 0L;
+		return configManager.getConfiguration(CONFIG_GROUP, "token." + key(rsn));
 	}
+
+
+	private void saveSessionToken(String rsn, String token)
+	{
+		configManager.setConfiguration(CONFIG_GROUP, "token." + key(rsn), token);
+	}
+
+
+	private void removeSessionToken(String rsn)
+	{
+		configManager.unsetConfiguration(CONFIG_GROUP, "token." + key(rsn));
+	}
+
+
+	private String currentRsn()
+	{
+		Player player = client.getLocalPlayer();
+		return player == null ? null : Text.removeTags(player.getName());
+	}
+
+
+	private boolean isCurrentAccountInSixthDegree(String rsn)
+	{
+		ClanSettings settings = client.getClanSettings();
+		return settings != null && CLAN_NAME.equalsIgnoreCase(Text.removeTags(settings.getName()));
+	}
+
 
 	private boolean isStillCurrentClanAccount(String rsn)
 	{
@@ -743,51 +836,14 @@ public class SixthDegreePlugin extends Plugin
 			&& isCurrentAccountInSixthDegree(rsn);
 	}
 
-	private boolean isCurrentAccountInSixthDegree(String rsn)
-	{
-		ClanSettings settings = client.getClanSettings();
-		if (settings == null || settings.getName() == null || !CLAN_NAME.equalsIgnoreCase(Text.removeTags(settings.getName())))
-		{
-			return false;
-		}
-		return sameRsn(rsn, currentRsn());
-	}
-
-	private String currentRsn()
-	{
-		Player player = client.getLocalPlayer();
-		if (player == null || player.getName() == null)
-		{
-			return null;
-		}
-		return Text.removeTags(player.getName());
-	}
 
 	private boolean sameRsn(String left, String right)
 	{
-		if (left == null || right == null)
-		{
-			return false;
-		}
-		return left.equalsIgnoreCase(right);
+		return left != null && right != null && left.equalsIgnoreCase(right);
 	}
 
-	private String loadSessionToken(String rsn)
-	{
-		return configManager.getConfiguration(CONFIG_GROUP, "session." + accountKey(rsn));
-	}
 
-	private void saveSessionToken(String rsn, String token)
-	{
-		configManager.setConfiguration(CONFIG_GROUP, "session." + accountKey(rsn), token);
-	}
-
-	private void removeSessionToken(String rsn)
-	{
-		configManager.unsetConfiguration(CONFIG_GROUP, "session." + accountKey(rsn));
-	}
-
-	private String accountKey(String rsn)
+	private String key(String rsn)
 	{
 		try
 		{
@@ -806,15 +862,17 @@ public class SixthDegreePlugin extends Plugin
 		}
 	}
 
+
 	private Throwable unwrap(Throwable throwable)
 	{
-		Throwable current = throwable;
-		while (current instanceof CompletionException && current.getCause() != null)
+		Throwable cause = throwable;
+		while (cause instanceof CompletionException && cause.getCause() != null)
 		{
-			current = current.getCause();
+			cause = cause.getCause();
 		}
-		return current;
+		return cause;
 	}
+
 
 	private BufferedImage buildSixthDegreeIcon()
 	{
@@ -824,7 +882,7 @@ public class SixthDegreePlugin extends Plugin
 		{
 			graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 			graphics.setColor(new Color(18, 18, 18));
-			graphics.fillRoundRect(0, 0, 32, 32, 6, 6);
+			graphics.fillRoundRect(0, 0, 32, 32, 8, 8);
 			graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 			graphics.setColor(Color.WHITE);
 			graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 29));
@@ -838,6 +896,7 @@ public class SixthDegreePlugin extends Plugin
 		}
 		return image;
 	}
+
 
 	@Provides
 	SixthDegreeConfig provideConfig(ConfigManager manager)
