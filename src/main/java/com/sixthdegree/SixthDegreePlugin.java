@@ -734,23 +734,42 @@ public class SixthDegreePlugin extends Plugin
 	private void flushLootTelemetry()
 	{
 		lootService.sealBatch();
-		if (!canSendMemberTelemetry() || lootSendInFlight.get())
+		if (!canSendMemberTelemetry() || !lootSendInFlight.compareAndSet(false, true))
 		{
 			return;
 		}
-		SixthDegreeLootService.LootBatch batch = lootService.poll();
+		SixthDegreeLootService.Batch batch = lootService.peekBatch();
 		if (batch == null)
 		{
+			lootSendInFlight.set(false);
 			return;
 		}
-		String rsn = validatedRsn;
-		String token = rsn == null ? null : loadSessionToken(rsn);
-		if (token == null || token.isBlank() || !lootSendInFlight.compareAndSet(false, true))
+		String token = loadSessionToken(validatedRsn);
+		if (token == null || token.isBlank())
 		{
+			lootSendInFlight.set(false);
 			return;
 		}
-		apiClient.postLootBatch(token, batch.batchId, batch.valueGp, batch.dropCount, batch.recordedAt)
-			.whenComplete((response, error) -> lootSendInFlight.set(false));
+		apiClient.postLootBatch(token, batch.id, batch.valueGp, batch.dropCount, batch.recordedAt)
+			.whenComplete((response, error) ->
+			{
+				if (error == null && response != null && response.ok)
+				{
+					lootService.acknowledge(batch.id);
+					SwingUtilities.invokeLater(() ->
+					{
+						if (panel != null)
+						{
+							panel.refreshLootLeaderboardIfVisible();
+						}
+					});
+				}
+				lootSendInFlight.set(false);
+				if (error == null && lootService.peekBatch() != null && scheduler != null && !scheduler.isShutdown())
+				{
+					scheduler.schedule(this::flushLootTelemetry, 1, TimeUnit.SECONDS);
+				}
+			});
 	}
 
 
