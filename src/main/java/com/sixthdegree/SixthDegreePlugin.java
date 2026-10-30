@@ -734,17 +734,22 @@ public class SixthDegreePlugin extends Plugin
 	private void flushLootTelemetry()
 	{
 		lootService.sealBatch();
-		if (!canSendMemberTelemetry() || !lootSendInFlight.compareAndSet(false, true))
+		if (!canSendMemberTelemetry() || lootSendInFlight.get())
 		{
 			return;
 		}
-		String token = loadSessionToken(validatedRsn);
-		if (token == null || token.isBlank())
+		SixthDegreeLootService.LootBatch batch = lootService.poll();
+		if (batch == null)
 		{
-			lootSendInFlight.set(false);
 			return;
 		}
-		apiClient.postLootBatch(token, lootService.nextBatchId(), lootService.drainValue(), lootService.drainCount(), System.currentTimeMillis() / 1000L)
+		String rsn = validatedRsn;
+		String token = rsn == null ? null : loadSessionToken(rsn);
+		if (token == null || token.isBlank() || !lootSendInFlight.compareAndSet(false, true))
+		{
+			return;
+		}
+		apiClient.postLootBatch(token, batch.batchId, batch.valueGp, batch.dropCount, batch.recordedAt)
 			.whenComplete((response, error) -> lootSendInFlight.set(false));
 	}
 
