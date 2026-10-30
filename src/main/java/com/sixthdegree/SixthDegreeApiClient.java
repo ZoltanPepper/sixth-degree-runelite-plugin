@@ -225,7 +225,7 @@ final class SixthDegreeApiClient
 		return new Request.Builder()
 			.url(url)
 			.header("Accept", "application/json")
-			.header("User-Agent", "Sixth-Degree-RuneLite/2.0.0")
+			.header("User-Agent", "Sixth-Degree-RuneLite/2.0.1")
 			.header("ngrok-skip-browser-warning", "sixth-degree-runelite");
 	}
 
