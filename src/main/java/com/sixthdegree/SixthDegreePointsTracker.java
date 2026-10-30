@@ -18,6 +18,7 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.util.Text;
 
 /**
@@ -91,7 +92,8 @@ final class SixthDegreePointsTracker
 		table.clear();
 	}
 
-	void onChatMessage(ChatMessage event)
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
 	{
 		if (!active || event == null)
 		{
